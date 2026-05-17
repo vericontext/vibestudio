@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or exposed keys
+    url: https://github.com/vericontext/vibestudio/security
+    about: Do not open public issues with provider keys, private assets, or security-sensitive details.

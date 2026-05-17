@@ -1,0 +1,49 @@
+{
+  "name": "vibestudio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first OSS video studio for AI character sheets, storyboard drafts, and Seedance 2.0 reference-to-video workflows.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vericontext/vibestudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vericontext/vibestudio/issues"
+  },
+  "homepage": "https://github.com/vericontext/vibestudio#readme",
+  "keywords": [
+    "ai-video",
+    "storyboard",
+    "seedance",
+    "gpt-image",
+    "vibeframe",
+    "nextjs"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vibeframe/cli": "0.105.2",
+    "lucide-react": "^0.563.0",
+    "next": "14.2.35",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

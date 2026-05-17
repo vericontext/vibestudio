@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest an improvement or new workflow for VibeStudio.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is hard, missing, or error-prone today?
+      placeholder: Describe the user workflow and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should VibeStudio do?
+      placeholder: Describe the UI, behavior, or API you would like.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Character sheets
+        - Storyboard drafting
+        - Video generation
+        - Continuity/reference handling
+        - Preview/export
+        - Provider integration
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples or references
+      description: Links, screenshots, prompts, or comparable tools that clarify the request.
+      placeholder: Add references if useful. Do not include private assets or API keys.
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs
+      description: Any constraints, provider costs, latency concerns, or compatibility notes?

@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+.env
+.env.local
+workspace
+*.tsbuildinfo
+.DS_Store
+.codex
+.playwright-mcp
+vibestudio-*.png

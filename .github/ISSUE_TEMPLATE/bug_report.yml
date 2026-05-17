@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a reproducible problem in VibeStudio.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not include API keys, full provider tokens, or private generated assets.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Describe the issue in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest workflow that reproduces the issue.
+      placeholder: |
+        1. Start the app with ...
+        2. Generate ...
+        3. Click ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Character sheet generation
+        - Storyboard draft
+        - Seedance video generation
+        - Storyboard preview/export
+        - API key/configuration
+        - UI/UX
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: VibeStudio version or commit
+      placeholder: e.g. 0.1.0 or commit SHA
+  - type: input
+    id: node
+    attributes:
+      label: Node.js version
+      placeholder: e.g. 20.11.0
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. macOS 15, Ubuntu 24.04, Windows 11
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact keys and private file paths before posting.
+      render: shell
