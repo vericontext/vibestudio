@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { promisify } from "node:util";
-import { DEFAULT_PROJECT_ID, projectFileUrl, projectRelativePath, writeAssetMetadata } from "./projects";
+import { DEFAULT_PROJECT_ID, projectFileUrl, projectRelativePath, readRawKeys, writeAssetMetadata } from "./projects";
 import { promptForCli, slugify } from "./prompts";
 import { isRunningStatus, patchShot, readStoryboard, writeStoryboard } from "./storyboard";
 import { runVibe } from "./vibeframe";
@@ -18,6 +18,8 @@ type PreviousShotVideo = {
 };
 
 type ContinuityInput = {
+  inputMode: "reference-to-video" | "image-to-video" | "image-to-video-start-end";
+  startImageReference?: string;
   previousVideoReference?: string;
   originalPreviousVideoReference?: string;
   previousVideoAudioStripped?: boolean;
@@ -199,6 +201,14 @@ async function runShotGeneration(projectId: string, shotId: string): Promise<voi
 
     await mkdir(projectRelativePath(projectId, "assets/videos/storyboard"), { recursive: true });
     const continuityInput = await buildContinuityInput(start, shot, projectId);
+    if (continuityInput.startImageReference) {
+      const keys = await readRawKeys(projectId);
+      if (!keys.imgbb) {
+        throw new Error(
+          "Strict continuation uses Seedance image-to-video and requires IMGBB_API_KEY for temporary image uploads. Add an ImgBB API key in the Keys panel, or switch this shot to Omni Reference mode."
+        );
+      }
+    }
     const prompt = buildContinuityPrompt(shot.prompt, continuityInput);
     const relPath = `assets/videos/storyboard/${shot.order + 1}-${shot.id.slice(0, 8)}-${slugify(prompt).slice(0, 28)}.mp4`;
     const args = [
@@ -214,11 +224,14 @@ async function runShotGeneration(projectId: string, shotId: string): Promise<voi
       "--ratio",
       shot.ratio,
       "--resolution",
-      shot.resolution,
-      "--ref-images",
-      ...continuityInput.references
+      shot.resolution
     ];
-    if (continuityInput.previousVideoReference) args.push("--ref-videos", continuityInput.previousVideoReference);
+    if (continuityInput.startImageReference) {
+      args.push("-i", continuityInput.startImageReference);
+    } else {
+      args.push("--ref-images", ...continuityInput.references);
+      if (continuityInput.previousVideoReference) args.push("--ref-videos", continuityInput.previousVideoReference);
+    }
     if (!shot.generateAudio) args.push("--no-generate-audio");
     args.push("-o", relPath);
 
@@ -234,9 +247,10 @@ async function runShotGeneration(projectId: string, shotId: string): Promise<voi
       seedanceModel: shot.seedanceModel,
       generateAudio: shot.generateAudio,
       source: "storyboard-shot",
-      inputMode: "reference-to-video",
+      inputMode: continuityInput.inputMode,
       characterReferences: shot.references,
       references: continuityInput.references,
+      startImageReference: continuityInput.startImageReference,
       continuityVideoReference: continuityInput.previousVideoReference,
       originalContinuityVideoReference: continuityInput.originalPreviousVideoReference,
       continuityVideoAudioStripped: continuityInput.previousVideoAudioStripped,
@@ -261,12 +275,23 @@ async function buildContinuityInput(
   projectId: string
 ): Promise<ContinuityInput> {
   const previous = previousImmediateShotVideoReference(storyboard, shot, projectId);
-  if (!previous) return { references: shot.references };
+  if (!previous) return { inputMode: "reference-to-video", references: shot.references };
+
+  const continuityFrameReference = await extractContinuityFrame(projectId, previous, shot);
+  if (shot.generationMode === "strict-continuation" || shot.generationMode === "keyframe-bridge") {
+    return {
+      inputMode: "image-to-video",
+      startImageReference: continuityFrameReference,
+      originalPreviousVideoReference: previous.relPath,
+      continuityFrameReference,
+      references: shot.references
+    };
+  }
 
   const videoReference = await createSilentContinuityVideo(projectId, previous, shot);
-  const continuityFrameReference = await extractContinuityFrame(projectId, previous, shot);
   const references = [...shot.references, continuityFrameReference];
   return {
+    inputMode: "reference-to-video",
     previousVideoReference: videoReference.relPath,
     originalPreviousVideoReference: previous.relPath,
     previousVideoAudioStripped: videoReference.audioStripped,
@@ -277,6 +302,16 @@ async function buildContinuityInput(
 }
 
 function buildContinuityPrompt(prompt: string, input: ContinuityInput): string {
+  if (input.startImageReference) {
+    return promptForCli(
+      [
+        rewriteImageMentionsForStartFrame(prompt),
+        "Start exactly from the provided starting frame. Preserve its character identity, outfit, pose, lighting, geography, color grade, and screen direction.",
+        "Single continuous shot with one main physical action. Do not cut to a new location, reset the pose, change outfit, change character identity, or introduce extra actions.",
+        "Native audio must match only visible action in this shot."
+      ].join(" ")
+    );
+  }
   if (!input.previousVideoReference) return promptForCli(prompt);
   const audioGuard =
     "Treat @Video1 as a silent visual continuity reference only. Do not copy sound effects, footsteps, ambience, dialogue, or music from @Video1. Generate audio only from visible actions in this shot; if feet are not visibly walking or running, include no footstep sounds.";
@@ -288,6 +323,15 @@ function buildContinuityPrompt(prompt: string, input: ContinuityInput): string {
   return promptForCli(
     `${prompt} Use ${input.continuityFrameToken} as the exact opening frame, pose, composition, and lighting continuity from the previous shot. Use @Video1 only for silent visual motion rhythm and ending-state continuity. Use @Image1 as the source of character identity, face, outfit, and palette. ${audioGuard}`
   );
+}
+
+function rewriteImageMentionsForStartFrame(prompt: string): string {
+  return prompt
+    .replace(/\bUse\s+@Image1\s+as\s+the\s+primary\s+character\s+sheet\s+reference\.?/gi, "")
+    .replace(/\bUse\s+@Image1\s+as\s+the\s+main\s+character\s+identity\.?/gi, "")
+    .replace(/@Image\d+/g, "the provided starting frame")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function previousImmediateShotVideoReference(

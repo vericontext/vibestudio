@@ -79,11 +79,13 @@ export function buildStoryboardDraftPrompt(input: {
       "For every shot, include startState, action, endState, camera, and transitionToNext. The startState must match the previous shot's endState.",
       "For every shot, include firstFrameIntent and lastFrameIntent so the video generator has clear opening and ending frame guidance.",
       "For every shot, include soundDesign with the exact audio that should be generated from visible action only. Close-ups should use breath, fabric, room tone, or city ambience, not footsteps unless walking/running feet are visible.",
-      "The prompt field must be production-ready and include the start state, opening frame intent, one main action, camera movement/framing, ending frame intent, ending state, sound design, and handoff to the next shot.",
+      "The prompt field must be concise. Do not repeat the structured fields verbatim; the app will compose the final Seedance prompt from the fields.",
       "Maintain character, outfit, palette, facial identity, scene geography, lighting direction, weather, props, and screen direction across all shots.",
       "Keep motion physically plausible between cuts. Avoid impossible jumps in pose, location, lighting, or held objects.",
-      "Prefer dynamic but readable cinematic motion: motivated tracking, push-ins, whip-pan transitions, parallax, foreground occlusion, and clear body mechanics. Avoid vague prompts like simply walking or turning unless the shot is intentionally quiet.",
-      "Avoid requesting readable text in the video. Avoid fast multi-step action inside one shot. Avoid unrelated audio such as footsteps, engines, impacts, or crowd noise unless visible in that shot.",
+      "Prefer dynamic but readable cinematic motion: motivated tracking, push-ins, whip-pan transitions, parallax, foreground occlusion, and clear body mechanics.",
+      "Use exactly one main physical action per shot. Split complex action into more shots instead of packing slide, sprint, leap, landing, and lookback into one clip.",
+      "For action presets, prefer 4-7 second shots over 15 second multi-action clips.",
+      "Avoid requesting readable text in the video. Avoid unrelated audio such as footsteps, engines, impacts, or crowd noise unless visible in that shot.",
       "Return a qualityChecks array with short checks for duration sum, continuity, reference usage, and Seedance feasibility.",
       `Video brief: ${input.brief}`
     ]

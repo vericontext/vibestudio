@@ -27,6 +27,7 @@ import {
   X
 } from "lucide-react";
 import type {
+  GenerationMode,
   ProjectStatus,
   SeedanceModel,
   StoryboardDraftResult,
@@ -41,6 +42,7 @@ import type {
 type KeyForm = {
   openaiApiKey: string;
   falApiKey: string;
+  imgbbApiKey: string;
 };
 
 type ImageForm = {
@@ -264,7 +266,7 @@ export function StudioShell() {
   const [preview, setPreview] = useState<StudioAsset | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("asset");
   const [storyboardPreviewIndex, setStoryboardPreviewIndex] = useState(0);
-  const [keys, setKeys] = useState<KeyForm>({ openaiApiKey: "", falApiKey: "" });
+  const [keys, setKeys] = useState<KeyForm>({ openaiApiKey: "", falApiKey: "", imgbbApiKey: "" });
   const [imageForm, setImageForm] = useState<ImageForm>(defaultImageForm);
   const [draftForm, setDraftForm] = useState<DraftForm>(defaultDraftForm);
   const [draftPreview, setDraftPreview] = useState<StoryboardDraftResult | null>(null);
@@ -348,6 +350,8 @@ export function StudioShell() {
     () => parsePromptReferences(selectedShot?.prompt ?? "", referenceOptions),
     [selectedShot?.prompt, referenceOptions]
   );
+  const selectedNeedsUploadHost = Boolean(selectedShot && shotNeedsUploadHost(selectedShot));
+  const hasUploadHost = Boolean(project?.keys.imgbb.configured);
   const workflowStep = activeCharacterSheet ? (storyboard?.shots.length ? (allShotsReady ? 4 : 3) : 2) : 1;
   const draftSceneCountValue = draftForm.sceneCount === "auto" ? undefined : Number.parseInt(draftForm.sceneCount, 10);
   const draftSceneRange = useMemo(() => draftSceneRangeFor(draftForm.targetDuration), [draftForm.targetDuration]);
@@ -489,7 +493,7 @@ export function StudioShell() {
         body: JSON.stringify(keys)
       });
       if (!data.success) throw new Error("Key save failed");
-      setKeys({ openaiApiKey: "", falApiKey: "" });
+      setKeys({ openaiApiKey: "", falApiKey: "", imgbbApiKey: "" });
       pushLog("Project keys saved");
       await refreshProject();
     } catch (error) {
@@ -625,6 +629,7 @@ export function StudioShell() {
       ratio: "16:9" as VideoRatio,
       resolution: "720p" as VideoResolution,
       seedanceModel: "fast" as SeedanceModel,
+      generationMode: index === 0 ? "omni-reference" as GenerationMode : "strict-continuation" as GenerationMode,
       generateAudio: true,
       status: "draft" as const,
       createdAt: now,
@@ -660,6 +665,7 @@ export function StudioShell() {
       ratio: selectedShot?.ratio ?? "16:9",
       resolution: selectedShot?.resolution ?? "720p",
       seedanceModel: selectedShot?.seedanceModel ?? "fast",
+      generationMode: currentShots.length === 0 ? "omni-reference" : "strict-continuation",
       generateAudio: true,
       status: "draft",
       createdAt: now,
@@ -845,6 +851,10 @@ export function StudioShell() {
   }
 
   async function generateAllShots() {
+    if (!canGenerateAll) {
+      pushLog("Complete references and upload keys before queueing storyboard generation");
+      return;
+    }
     const saved = await saveStoryboardNow();
     if (!saved) return;
     setBusy("all");
@@ -895,12 +905,14 @@ export function StudioShell() {
   const canGenerateSelected =
     Boolean(selectedShot?.prompt.trim()) &&
     Boolean(selectedShot?.references.length) &&
+    (!selectedNeedsUploadHost || hasUploadHost) &&
     busy !== "shot" &&
     busy !== "all" &&
     !hasRunningShots;
   const canGenerateAll =
     Boolean(storyboard?.shots.length) &&
     storyboard!.shots.every((shot) => shot.prompt.trim() && shot.references.length > 0) &&
+    storyboard!.shots.every((shot) => !shotNeedsUploadHost(shot) || hasUploadHost) &&
     busy !== "all" &&
     !hasRunningShots;
 
@@ -932,6 +944,7 @@ export function StudioShell() {
           />
           <KeyPill label="OpenAI" value={project?.keys.openai.masked} ok={project?.keys.openai.configured} />
           <KeyPill label="fal.ai" value={project?.keys.fal.masked} ok={project?.keys.fal.configured} />
+          <KeyPill label="ImgBB" value={project?.keys.imgbb.masked} ok={project?.keys.imgbb.configured} />
           <button
             onClick={() => refreshAll("refresh")}
             className="ml-2 inline-flex h-8 w-8 items-center justify-center rounded border border-border bg-white hover:bg-panel"
@@ -994,6 +1007,7 @@ export function StudioShell() {
             previewMissingCount={storyboardPreviewMissingShots.length}
             hasRunningShots={hasRunningShots}
             allShotsReady={Boolean(allShotsReady)}
+            canGenerateAll={canGenerateAll}
             busy={busy}
             onCreateDefault={draftStoryboard}
             onAddShot={addShot}
@@ -1023,6 +1037,13 @@ export function StudioShell() {
                 value={keys.falApiKey}
                 onChange={(event) => setKeys((value) => ({ ...value, falApiKey: event.target.value }))}
                 placeholder="FAL_API_KEY"
+                type="password"
+                className="h-9 rounded border border-border px-3 text-sm outline-none focus:border-accent"
+              />
+              <input
+                value={keys.imgbbApiKey}
+                onChange={(event) => setKeys((value) => ({ ...value, imgbbApiKey: event.target.value }))}
+                placeholder="IMGBB_API_KEY for strict continuation"
                 type="password"
                 className="h-9 rounded border border-border px-3 text-sm outline-none focus:border-accent"
               />
@@ -1267,6 +1288,11 @@ export function StudioShell() {
                   <div className="font-semibold">{selectedContinuity.label}</div>
                   <div className="mt-0.5">{selectedContinuity.detail}</div>
                 </div>
+                {selectedNeedsUploadHost && !hasUploadHost ? (
+                  <div className="rounded border border-warn bg-[#fff7ed] p-2 text-xs text-warn">
+                    Strict continuation uses Seedance image-to-video and needs IMGBB_API_KEY for the extracted start frame.
+                  </div>
+                ) : null}
                 <ReferenceStrip
                   references={referenceOptions}
                   onPreview={previewAsset}
@@ -1297,6 +1323,15 @@ export function StudioShell() {
                     options={["fast", "quality"]}
                   />
                 </div>
+                <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                  Generation mode
+                  <Select
+                    value={selectedShot.generationMode}
+                    onChange={(value) => updateSelectedShot({ generationMode: value as GenerationMode })}
+                    options={["omni-reference", "strict-continuation"]}
+                  />
+                </label>
+                <PromptLintMessages shot={selectedShot} references={referenceOptions} />
                 <div className="grid grid-cols-3 gap-2">
                   {[5, 10, 15].map((duration) => (
                     <button
@@ -1524,6 +1559,7 @@ function StoryboardLane({
   previewMissingCount,
   hasRunningShots,
   allShotsReady,
+  canGenerateAll,
   busy,
   onCreateDefault,
   onAddShot,
@@ -1544,6 +1580,7 @@ function StoryboardLane({
   previewMissingCount: number;
   hasRunningShots: boolean;
   allShotsReady: boolean;
+  canGenerateAll: boolean;
   busy: Busy;
   onCreateDefault: () => void;
   onAddShot: () => void;
@@ -1590,7 +1627,7 @@ function StoryboardLane({
           />
           <MiniButton
             onClick={onGenerateAll}
-            disabled={shots.length === 0 || hasRunningShots || busy === "all"}
+            disabled={!canGenerateAll}
             icon={busy === "all" ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
             label="All"
           />
@@ -1894,6 +1931,18 @@ function PromptReferenceList({ references }: { references: PromptReference[] }) 
   );
 }
 
+function PromptLintMessages({ shot, references }: { shot: StoryboardShot; references: ReferenceOption[] }) {
+  const messages = promptLintMessages(shot, references);
+  if (messages.length === 0) return null;
+  return (
+    <div className="grid gap-1 rounded border border-warn bg-[#fff7ed] p-2 text-xs text-warn">
+      {messages.map((message) => (
+        <div key={message}>{message}</div>
+      ))}
+    </div>
+  );
+}
+
 function parsePromptReferences(prompt: string, options: ReferenceOption[]): PromptReference[] {
   const uniqueTokens = Array.from(new Set(prompt.match(/@Image\d+/g) ?? []));
   return uniqueTokens.map((token) => {
@@ -1905,6 +1954,38 @@ function parsePromptReferences(prompt: string, options: ReferenceOption[]): Prom
       valid: Boolean(option)
     };
   });
+}
+
+function promptLintMessages(shot: StoryboardShot, references: ReferenceOption[]): string[] {
+  const messages: string[] = [];
+  if (shot.prompt.length > 900) {
+    messages.push("Prompt is long. Shorter single-action prompts usually follow better.");
+  }
+  const actionCount = countActionWords(shot.prompt);
+  if (actionCount >= 5) {
+    messages.push(`This shot appears to contain ${actionCount} action beats. Split it into shorter shots.`);
+  }
+  if (shot.generationMode === "omni-reference" && /exact opening frame|start exactly|seamlessly from/i.test(shot.prompt)) {
+    messages.push("Omni Reference cannot guarantee an exact first frame. Use Strict Continuation for scene joins.");
+  }
+  if (shot.generationMode !== "omni-reference" && references.length > 0 && /@Image\d+/i.test(shot.prompt)) {
+    messages.push("Strict modes use a provided start frame, not @Image tokens. Mentions will be rewritten at generation time.");
+  }
+  if (shot.generationMode === "keyframe-bridge") {
+    messages.push("Bridge mode currently locks the starting frame; ending keyframes are planned as a follow-up.");
+  }
+  return messages;
+}
+
+function countActionWords(prompt: string): number {
+  const matches = prompt.match(
+    /\b(accelerates?|sprints?|runs?|vaults?|slides?|leaps?|jumps?|lands?|turns?|looks?|dodges?|checks?|adjusts?|crosses?|rises?|drops?|pushes?|pulls?|throws?|catches?)\b/gi
+  );
+  return matches?.length ?? 0;
+}
+
+function shotNeedsUploadHost(shot: StoryboardShot): boolean {
+  return shot.order > 0 && (shot.generationMode === "strict-continuation" || shot.generationMode === "keyframe-bridge");
 }
 
 function continuityStatusForShot(
@@ -1919,9 +2000,18 @@ function continuityStatusForShot(
     };
   }
   const frame = stringMetadata(asset, "continuityFrameReference");
+  const startImage = stringMetadata(asset, "startImageReference");
+  const inputMode = stringMetadata(asset, "inputMode");
   const video = stringMetadata(asset, "continuityVideoReference");
   const token = stringMetadata(asset, "continuityFrameToken");
   const audioStripped = asset?.metadata?.["continuityVideoAudioStripped"] === true;
+  if (startImage || inputMode === "image-to-video" || inputMode === "image-to-video-start-end") {
+    return {
+      label: inputMode === "image-to-video-start-end" ? "Start frame locked" : "Starting frame locked",
+      detail: "The previous clip's last frame was sent as the Seedance image-to-video starting frame.",
+      tone: "ready"
+    };
+  }
   if (frame && video) {
     return {
       label: "Previous video + last frame",
@@ -1944,8 +2034,11 @@ function continuityStatusForShot(
     };
   }
   return {
-    label: "Continuity pending",
-    detail: "When generated after the previous shot completes, VibeStudio will add its video and extracted last frame.",
+    label: shot.generationMode === "omni-reference" ? "Reference continuity pending" : "Strict continuation pending",
+    detail:
+      shot.generationMode === "omni-reference"
+        ? "When generated after the previous shot completes, VibeStudio will add its video and extracted last frame as references."
+        : "When generated after the previous shot completes, VibeStudio will use its last frame as the Seedance starting frame.",
     tone: "idle"
   };
 }

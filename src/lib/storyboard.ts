@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_PROJECT_ID, ensureProject, projectRelativePath } from "./projects";
 import type {
+  GenerationMode,
   SeedanceModel,
   StoryboardProject,
   StoryboardShot,
@@ -22,6 +23,7 @@ export type ShotPatch = Partial<
     | "ratio"
     | "resolution"
     | "seedanceModel"
+    | "generationMode"
     | "generateAudio"
     | "status"
     | "outputRelPath"
@@ -112,6 +114,7 @@ export function createShot(input: {
   ratio?: VideoRatio;
   resolution?: VideoResolution;
   seedanceModel?: SeedanceModel;
+  generationMode?: GenerationMode;
   generateAudio?: boolean;
 }): StoryboardShot {
   const now = new Date().toISOString();
@@ -128,6 +131,7 @@ export function createShot(input: {
       ratio: input.ratio ?? "16:9",
       resolution: input.resolution ?? "720p",
       seedanceModel: input.seedanceModel ?? "fast",
+      generationMode: input.generationMode ?? defaultGenerationMode(input.order),
       generateAudio: input.generateAudio ?? true,
       status: "draft",
       createdAt: now,
@@ -165,6 +169,7 @@ export function normalizeShot(input: Partial<StoryboardShot>, order: number): St
     ratio: normalizeRatio(input.ratio),
     resolution: normalizeResolution(input.resolution),
     seedanceModel: normalizeSeedanceModel(input.seedanceModel),
+    generationMode: normalizeGenerationMode(input.generationMode, order),
     generateAudio: input.generateAudio !== false,
     status: normalizeStatus(input.status),
     outputRelPath: typeof input.outputRelPath === "string" ? input.outputRelPath : undefined,
@@ -203,6 +208,18 @@ function normalizeResolution(value: unknown): VideoResolution {
 
 function normalizeSeedanceModel(value: unknown): SeedanceModel {
   return value === "quality" || value === "fast" ? value : "fast";
+}
+
+function defaultGenerationMode(order: number): GenerationMode {
+  return order === 0 ? "omni-reference" : "strict-continuation";
+}
+
+function normalizeGenerationMode(value: unknown, order: number): GenerationMode {
+  if (value === "omni-reference" || value === "strict-continuation") {
+    return value;
+  }
+  if (value === "keyframe-bridge") return "strict-continuation";
+  return defaultGenerationMode(order);
 }
 
 function normalizeStatus(value: unknown): StoryboardShot["status"] {

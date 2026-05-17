@@ -46,13 +46,14 @@ export async function projectStatus(projectId = DEFAULT_PROJECT_ID): Promise<Pro
 
 export async function saveProjectKeys(
   projectId: string,
-  keys: { openaiApiKey?: string; falApiKey?: string }
+  keys: { openaiApiKey?: string; falApiKey?: string; imgbbApiKey?: string }
 ): Promise<ProjectStatus["keys"]> {
   await ensureProject(projectId);
   const existing = await readRawKeys(projectId);
   const next = {
     openai: keys.openaiApiKey?.trim() || existing.openai,
-    fal: keys.falApiKey?.trim() || existing.fal
+    fal: keys.falApiKey?.trim() || existing.fal,
+    imgbb: keys.imgbbApiKey?.trim() || existing.imgbb
   };
   const config = [
     'version: "1.0.0"',
@@ -61,6 +62,7 @@ export async function saveProjectKeys(
     "providers:",
     next.openai ? `  openai: "${escapeYaml(next.openai)}"` : "  openai:",
     next.fal ? `  fal: "${escapeYaml(next.fal)}"` : "  fal:",
+    next.imgbb ? `  imgbb: "${escapeYaml(next.imgbb)}"` : "  imgbb:",
     "defaults:",
     "  imageProvider: openai",
     "  videoProvider: seedance",
@@ -81,17 +83,19 @@ export async function readKeyStatus(projectId: string): Promise<ProjectStatus["k
   const keys = await readRawKeys(projectId);
   return {
     openai: keyStatus(keys.openai),
-    fal: keyStatus(keys.fal)
+    fal: keyStatus(keys.fal),
+    imgbb: keyStatus(keys.imgbb)
   };
 }
 
-export async function readRawKeys(projectId: string): Promise<{ openai?: string; fal?: string }> {
+export async function readRawKeys(projectId: string): Promise<{ openai?: string; fal?: string; imgbb?: string }> {
   const configPath = projectRelativePath(projectId, ".vibeframe/config.yaml");
   if (!existsSync(configPath)) return {};
   const raw = await readFile(configPath, "utf-8");
   return {
     openai: readYamlScalar(raw, "openai"),
-    fal: readYamlScalar(raw, "fal")
+    fal: readYamlScalar(raw, "fal"),
+    imgbb: readYamlScalar(raw, "imgbb")
   };
 }
 

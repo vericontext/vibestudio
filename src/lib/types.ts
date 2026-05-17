@@ -9,6 +9,7 @@ export type ProjectStatus = {
   keys: {
     openai: ProviderKeyStatus;
     fal: ProviderKeyStatus;
+    imgbb: ProviderKeyStatus;
   };
   vibe: VibeCliStatus;
   assets: StudioAsset[];
@@ -36,6 +37,8 @@ export type VideoRatio = "16:9" | "9:16" | "1:1";
 export type VideoResolution = "480p" | "720p" | "1080p";
 
 export type SeedanceModel = "quality" | "fast";
+
+export type GenerationMode = "omni-reference" | "strict-continuation" | "keyframe-bridge";
 
 export type GenerateImagesRequest = {
   characterName?: string;
@@ -81,6 +84,7 @@ export type StoryboardShot = {
   ratio: VideoRatio;
   resolution: VideoResolution;
   seedanceModel: SeedanceModel;
+  generationMode: GenerationMode;
   generateAudio: boolean;
   status: ShotStatus;
   outputRelPath?: string;

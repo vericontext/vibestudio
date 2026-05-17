@@ -7,11 +7,12 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     openaiApiKey?: string;
     falApiKey?: string;
+    imgbbApiKey?: string;
   };
   const keys = await saveProjectKeys(DEFAULT_PROJECT_ID, {
     openaiApiKey: body.openaiApiKey,
-    falApiKey: body.falApiKey
+    falApiKey: body.falApiKey,
+    imgbbApiKey: body.imgbbApiKey
   });
   return NextResponse.json({ success: true, keys });
 }
-

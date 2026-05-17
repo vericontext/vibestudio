@@ -28,6 +28,7 @@ This is an early OSS studio. The core workflow is usable, but provider behavior,
 - ffmpeg and ffprobe available on your `PATH`
 - OpenAI API key for character sheets and AI storyboard drafting
 - fal.ai API key for Seedance 2.0 video generation
+- ImgBB API key for strict Seedance image-to-video continuation from local extracted frames
 
 ## Quick Start
 
@@ -44,7 +45,7 @@ http://localhost:3000
 
 Then:
 
-1. Add `OPENAI_API_KEY` and `FAL_API_KEY` in the Keys panel.
+1. Add `OPENAI_API_KEY`, `FAL_API_KEY`, and optionally `IMGBB_API_KEY` in the Keys panel.
 2. Choose or edit a Character Sheet preset, then generate a sheet.
 3. Choose or edit a Storyboard Draft preset, then draft a storyboard.
 4. Apply the draft, review each shot prompt, and generate clips.
@@ -86,7 +87,8 @@ For best Seedance 2.0 consistency:
 
 - Use one wide character sheet with turnaround views, face close-ups, movement poses, gear details, and palette swatches.
 - Keep `@Image1` as the primary identity and appearance reference.
-- Use previous clips only for visual continuity; VibeStudio strips audio from continuity video references to avoid sound carryover.
+- Use Strict Continuation for scene joins. VibeStudio extracts the previous clip's last frame and sends it as the Seedance image-to-video starting frame.
+- Use Omni Reference when you want identity/style/motion references instead of exact first-frame continuity.
 - Describe visible action, camera movement, framing, lighting, first frame, last frame, and shot-specific sound design.
 - Keep each generated clip in the 4-15 second range and stitch longer videos from multiple shots.
 

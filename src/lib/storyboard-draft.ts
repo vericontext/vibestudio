@@ -40,6 +40,18 @@ type OpenAiDraftResult = {
   error?: string;
 };
 
+type FallbackBeat = {
+  title: string;
+  startState: string;
+  firstFrameIntent: string;
+  action: string;
+  lastFrameIntent: string;
+  endState: string;
+  camera: string;
+  soundDesign: string;
+  transitionToNext: string;
+};
+
 type OpenAiResponse = {
   output_text?: string;
   output?: Array<{
@@ -323,76 +335,15 @@ function fallbackShots(input: {
   references: string[];
 }): StoryboardShot[] {
   const durations = durationsForPlan(input.targetDuration, input.sceneCount, input.pacing);
-  const beats = [
-    {
-      title: "Opening",
-      startState: "the scene begins on a readable wide view of the location before the character fully enters",
-      action: "establish the main location and character presence with a clean cinematic opening frame",
-      endState: "the character is fully visible and moving in a clear direction",
-      camera: "wide establishing frame with a slow push-in",
-      soundDesign: "low rain ambience, distant neon hum, soft fabric movement, no loud footsteps until the character's feet are visible",
-      transitionToNext: "carry the character's movement direction into the next shot"
-    },
-    {
-      title: "Movement",
-      startState: "the character continues from the previous direction with the same pace and posture",
-      action: "show the character moving through the scene with one clear physical action and consistent silhouette",
-      endState: "the character reaches a point where the face and gear can be seen closer",
-      camera: "medium tracking shot that preserves screen direction",
-      soundDesign: "controlled footfalls synced only to visible steps, light bag strap movement, wet street ambience",
-      transitionToNext: "end close enough for the next shot to pick up facial identity and outfit detail"
-    },
-    {
-      title: "Close Detail",
-      startState: "the character arrives in the same location and turns slightly toward camera",
-      action: "move into a close medium shot that shows face identity, outfit texture, and important gear details",
-      endState: "the character notices or decides something specific",
-      camera: "close medium shot with shallow depth of field and restrained motion",
-      soundDesign: "close room tone, soft breath, subtle jacket fabric, no footsteps because feet are not visible",
-      transitionToNext: "hold the decision beat so the next shot can show the resulting action"
-    },
-    {
-      title: "Story Beat",
-      startState: "the character continues from the decision beat without changing outfit, lighting, or location logic",
-      action: "show the character making a decision or interacting with a key object in the environment",
-      endState: "the interaction creates a reason for stronger movement",
-      camera: "medium shot with a clear readable action",
-      soundDesign: "small prop handling sound, restrained electronic cue, ambience matching the same location",
-      transitionToNext: "end with the body angled into the dynamic movement of the next shot"
-    },
-    {
-      title: "Dynamic Push",
-      startState: "the character launches from the previous body angle and keeps the same screen direction",
-      action: "create the most dynamic moment with controlled camera motion and readable action",
-      endState: "the character slows or lands into a composed final position",
-      camera: "controlled handheld push or tracking move, not chaotic",
-      soundDesign: "visible movement sounds only, brief fabric rush, landing or footfall only if shown in frame, no unrelated repeated footsteps",
-      transitionToNext: "finish with a stable pose that can cut into the final look"
-    },
-    {
-      title: "Final Look",
-      startState: "the character settles from the previous motion into a stable final position",
-      action: "end on a clean memorable pose or look that resolves the scene",
-      endState: "the character holds a confident final expression",
-      camera: "quiet close-up or close medium ending frame",
-      soundDesign: "quiet final ambience, soft breath, subtle fabric, no footsteps or action impacts",
-      transitionToNext: "final shot, no further handoff needed"
-    }
-  ];
+  const beats = selectFallbackBeats(fallbackBeatPlan(input.brief), durations.length);
   const now = new Date().toISOString();
   return durations.map((duration, index) => {
-    const beat = beats[index] ?? {
-      title: `Shot ${index + 1}`,
-      startState: "continue from the previous shot's ending state",
-      action: "continue the visual story with one clear cinematic action",
-      endState: "end in a stable readable pose for the next cut",
-      camera: "simple cinematic camera movement",
-      soundDesign: "audio matches only the visible action in this shot, no unrelated carryover sounds",
-      transitionToNext: "preserve screen direction and scene continuity"
-    };
+    const beat = beats[index] ?? continuationFallbackBeat(index);
     const prompt = composeShotPrompt({
       startState: beat.startState,
+      firstFrameIntent: beat.firstFrameIntent,
       action: beat.action,
+      lastFrameIntent: beat.lastFrameIntent,
       endState: beat.endState,
       camera: beat.camera,
       soundDesign: beat.soundDesign,
@@ -416,6 +367,345 @@ function fallbackShots(input: {
   });
 }
 
+function fallbackBeatPlan(brief: string): FallbackBeat[] {
+  const lower = brief.toLowerCase();
+  if (/\brooftop|parkour|ledge|gap|vault|slide\b/.test(lower)) return rooftopFallbackBeats();
+  if (/\bchase|sprint|alley|drone|barrier|steam\b/.test(lower)) return chaseFallbackBeats();
+  if (/\bheist|market|delivery|package|terminal|scanner|scan\b/.test(lower)) return heistFallbackBeats();
+  if (/\breveal|close-up|closeup|portrait|face|expression\b/.test(lower)) return revealFallbackBeats();
+  return generalFallbackBeats();
+}
+
+function selectFallbackBeats(beats: FallbackBeat[], sceneCount: number): FallbackBeat[] {
+  if (beats.length === sceneCount) return beats;
+  if (beats.length > sceneCount) {
+    if (sceneCount <= 1) return [beats[0]];
+    return Array.from({ length: sceneCount }, (_item, index) => {
+      const sourceIndex = Math.round((index * (beats.length - 1)) / (sceneCount - 1));
+      return beats[sourceIndex] ?? beats[beats.length - 1];
+    });
+  }
+  const out = [...beats];
+  while (out.length < sceneCount) {
+    out.splice(Math.max(1, out.length - 1), 0, continuationFallbackBeat(out.length));
+  }
+  return out;
+}
+
+function continuationFallbackBeat(index: number): FallbackBeat {
+  return {
+    title: `Bridge Beat ${index + 1}`,
+    startState: "the character continues from the previous ending pose with the same outfit, lighting, screen direction, and geography",
+    firstFrameIntent: "match the previous final pose as closely as possible and keep the body readable",
+    action: "perform one clear transitional movement that advances the scene without adding a second action beat",
+    lastFrameIntent: "finish on a stable readable pose that can become the next starting frame",
+    endState: "the character is balanced and pointed toward the next intended movement",
+    camera: "controlled tracking camera with clear silhouette and no chaotic cuts",
+    soundDesign: "only visible movement sounds, fabric motion, breath, and matching location ambience",
+    transitionToNext: "preserve the final pose, direction, location, and lighting for the next shot"
+  };
+}
+
+function rooftopFallbackBeats(): FallbackBeat[] {
+  return [
+    {
+      title: "Rooftop Launch",
+      startState: "the character is crouched on a rooftop ledge at dusk, facing left-to-right along the route",
+      firstFrameIntent: "full-body silhouette on the ledge with the skyline behind and the route visible ahead",
+      action: "push off from the ledge into the first controlled sprint steps",
+      lastFrameIntent: "end in a forward-running pose before the first obstacle",
+      endState: "the character is accelerating toward a cluster of rooftop pipes",
+      camera: "low side-tracking camera with slight front three-quarter lead and strong rooftop parallax",
+      soundDesign: "visible shoe scuffs, fabric flutter, controlled breath, faint rooftop wind",
+      transitionToNext: "carry the same left-to-right momentum into the pipe obstacle"
+    },
+    {
+      title: "Pipe Step",
+      startState: "the character reaches the pipe cluster with forward momentum intact",
+      firstFrameIntent: "feet and lower body are visible so the obstacle contact is readable",
+      action: "step cleanly over one pipe cluster with compact footwork",
+      lastFrameIntent: "end balanced beyond the pipe with the torso leaning into the next move",
+      endState: "the character clears the pipes and approaches a sign frame",
+      camera: "hip-height tracking shot with foreground pipes crossing frame",
+      soundDesign: "one light metal tap, concrete footfall, fabric movement, rooftop ambience",
+      transitionToNext: "keep the runner lined up for the sign-frame vault"
+    },
+    {
+      title: "Sign Vault",
+      startState: "the character arrives at a mounted sign frame on the same rooftop path",
+      firstFrameIntent: "hands, hips, and feet are visible before contact",
+      action: "vault across the sign frame in one readable athletic motion",
+      lastFrameIntent: "end with both feet returning to the roof and momentum still forward",
+      endState: "the character lands low and prepares for a lower obstacle",
+      camera: "slight push-in during the vault with clean silhouette and no impossible hang time",
+      soundDesign: "hand contact, brief metal flex, landing thump, breath, wind",
+      transitionToNext: "drop the body line toward the upcoming low-beam slide"
+    },
+    {
+      title: "Low Slide",
+      startState: "the character is already low and approaching a beam at the same speed",
+      firstFrameIntent: "the low beam fills the foreground and the body is compressed into frame",
+      action: "slide under the beam in one continuous controlled movement",
+      lastFrameIntent: "end with the character clearing the beam and starting to rise",
+      endState: "the character exits the slide low but stable, still moving left-to-right",
+      camera: "camera dips with the slide and passes close to the foreground beam",
+      soundDesign: "fabric scrape, breath exhale, shoe friction, rooftop wind",
+      transitionToNext: "rise out of the slide into the run-up for the gap"
+    },
+    {
+      title: "Gap Commit",
+      startState: "the character has risen from the slide and faces a narrow rooftop gap",
+      firstFrameIntent: "the gap is visible and the character is in a committed takeoff posture",
+      action: "take one leap across the narrow gap",
+      lastFrameIntent: "end at the instant before the landing with the far roof filling frame",
+      endState: "the character is crossing the gap with believable weight and trajectory",
+      camera: "side-tracking push with skyline parallax and no exaggerated acrobatics",
+      soundDesign: "one takeoff step, fabric rush, brief open-air wind",
+      transitionToNext: "continue directly into the landing absorption"
+    },
+    {
+      title: "Landing Absorb",
+      startState: "the character arrives over the far rooftop edge from the same gap trajectory",
+      firstFrameIntent: "feet are about to contact the far roof and the body is braced",
+      action: "land with realistic knee absorption and regain balance",
+      lastFrameIntent: "end with the character planted and turning the torso slightly",
+      endState: "the character is stable near the far edge after the landing",
+      camera: "tracking camera settles into a medium-wide frame as the impact resolves",
+      soundDesign: "soft landing thump, shoe grip, controlled breath, distant city ambience",
+      transitionToNext: "settle the body for a final skyline lookback"
+    },
+    {
+      title: "Skyline Lookback",
+      startState: "the character stands near the far rooftop edge after the landing",
+      firstFrameIntent: "balanced silhouette near the edge with the skyline behind",
+      action: "turn the head and upper body back toward the glowing skyline",
+      lastFrameIntent: "end on a stable composed lookback pose",
+      endState: "the character holds a calm final expression and readable silhouette",
+      camera: "steady medium shot with subtle push-in and soft neon rim light",
+      soundDesign: "soft breath, fabric settling, rooftop wind, distant city ambience, no footsteps",
+      transitionToNext: "final shot, hold the pose without adding another action"
+    }
+  ];
+}
+
+function chaseFallbackBeats(): FallbackBeat[] {
+  return [
+    {
+      title: "Signal Detect",
+      startState: "the character stands in a rain-slick alley with a drone light beginning to search behind",
+      firstFrameIntent: "medium-wide alley frame with wet neon reflections and the character readable",
+      action: "notice the pursuing drone signal and shift into a ready stance",
+      lastFrameIntent: "end with the body angled into the escape path",
+      endState: "the character is ready to sprint out of the alley",
+      camera: "handheld push-in from behind foreground steam and signage",
+      soundDesign: "rain ambience, soft electronic scan, jacket movement, no footsteps yet",
+      transitionToNext: "launch the prepared body angle into the first sprint"
+    },
+    {
+      title: "Wet Sprint",
+      startState: "the character launches from the alley mouth into the same screen direction",
+      firstFrameIntent: "feet are visible on wet pavement at the first stride",
+      action: "sprint through neon reflections for one clean acceleration beat",
+      lastFrameIntent: "end approaching a low street barrier",
+      endState: "the character is moving fast toward the barrier",
+      camera: "side-tracking shot with wet ground reflections and foreground sign blur",
+      soundDesign: "visible wet footfalls, fabric movement, rain, distant city hum",
+      transitionToNext: "keep speed and direction into the barrier vault"
+    },
+    {
+      title: "Barrier Vault",
+      startState: "the character reaches a low street barrier at full but controlled speed",
+      firstFrameIntent: "barrier, hands, and feet are visible before contact",
+      action: "vault the barrier in one readable movement",
+      lastFrameIntent: "end with feet back on pavement beyond the barrier",
+      endState: "the character clears the barrier and keeps running",
+      camera: "three-quarter tracking camera with a clean foreground occlusion pass",
+      soundDesign: "one hand contact, barrier rattle, landing splash, breath",
+      transitionToNext: "carry the landing into the steam cut"
+    },
+    {
+      title: "Steam Cut",
+      startState: "the character runs toward a venting steam column on the same street",
+      firstFrameIntent: "steam blooms ahead but the silhouette remains readable",
+      action: "cut through the steam with one sharp direction change",
+      lastFrameIntent: "end as the character exits the steam into clearer neon light",
+      endState: "the character has broken line of sight from the drone",
+      camera: "brief whip-pan that resolves into a stable tracking shot",
+      soundDesign: "steam hiss, one visible foot plant, fabric rush, rain ambience",
+      transitionToNext: "use the clear exit frame for the escape close-up"
+    },
+    {
+      title: "Escape Close",
+      startState: "the character slows just beyond the steam with the chase behind",
+      firstFrameIntent: "close medium frame with face, jacket collar, and breath visible",
+      action: "turn toward camera with a controlled confident expression",
+      lastFrameIntent: "end on a stable face close-up",
+      endState: "the character has escaped and is composed",
+      camera: "controlled push-in with shallow depth of field and soft neon edge light",
+      soundDesign: "soft breath, rain, distant drone fading, no footsteps because feet are not visible",
+      transitionToNext: "final shot, hold the expression"
+    }
+  ];
+}
+
+function heistFallbackBeats(): FallbackBeat[] {
+  return [
+    {
+      title: "Risk Signal",
+      startState: "the character is still in a crowded night-market edge with a delivery signal arriving",
+      firstFrameIntent: "hands and face are readable as the signal lights the gear",
+      action: "check the risky delivery signal on a compact device",
+      lastFrameIntent: "end with the device lowered and the route chosen",
+      endState: "the character knows the route and is ready to move",
+      camera: "close medium push-in with soft crowd motion behind",
+      soundDesign: "small device beep, cloth movement, market ambience, no footsteps",
+      transitionToNext: "carry the chosen direction into the market pass"
+    },
+    {
+      title: "Market Pass",
+      startState: "the character enters the market route from the same direction",
+      firstFrameIntent: "full body is visible among stalls and moving foreground people",
+      action: "thread through one narrow market gap without colliding",
+      lastFrameIntent: "end clear of the crowd and approaching a scanner beam",
+      endState: "the character has reached the scanner checkpoint",
+      camera: "motivated tracking shot through foreground stalls",
+      soundDesign: "visible footsteps, fabric brush, crowd walla, distant rain",
+      transitionToNext: "keep the body low and prepared for the scanner dodge"
+    },
+    {
+      title: "Scanner Dodge",
+      startState: "the scanner light sweeps across the route ahead",
+      firstFrameIntent: "the beam path is visible before the character moves",
+      action: "duck past one sweeping scanner beam",
+      lastFrameIntent: "end with the character beyond the beam beside a hidden terminal",
+      endState: "the character reaches the hidden terminal without being scanned",
+      camera: "low tracking camera with the beam crossing foreground",
+      soundDesign: "scanner sweep, one quick foot plant, breath, cloth movement",
+      transitionToNext: "land beside the terminal for the package swap"
+    },
+    {
+      title: "Package Swap",
+      startState: "the character is beside the hidden terminal with the package in reach",
+      firstFrameIntent: "hands, package, and terminal are all visible",
+      action: "swap the package into the terminal slot",
+      lastFrameIntent: "end with the terminal closed and the hands leaving frame",
+      endState: "the package exchange is complete",
+      camera: "tight practical close-up with no readable text requirement",
+      soundDesign: "soft package slide, terminal click, fabric movement, market ambience",
+      transitionToNext: "lift from the hands back to the exit direction"
+    },
+    {
+      title: "Exit Glance",
+      startState: "the character exits the terminal area into the same market lighting",
+      firstFrameIntent: "medium frame with face, bag, and background route visible",
+      action: "look back once with a calm confident glance",
+      lastFrameIntent: "end on a stable face-and-gear composition",
+      endState: "the character is clear of the exchange and composed",
+      camera: "restrained push-in with foreground crowd passing briefly",
+      soundDesign: "soft breath, distant market ambience, no footsteps unless feet are visible",
+      transitionToNext: "final shot, hold the look"
+    }
+  ];
+}
+
+function revealFallbackBeats(): FallbackBeat[] {
+  return [
+    {
+      title: "Waiting Frame",
+      startState: "the character waits under soft city light in a stable location",
+      firstFrameIntent: "medium-wide frame with the character still and the environment readable",
+      action: "hold a quiet waiting pose while fabric and hair move subtly",
+      lastFrameIntent: "end with the character noticing something off-screen",
+      endState: "attention shifts toward the off-screen signal",
+      camera: "slow restrained push-in with shallow depth beginning to form",
+      soundDesign: "city ambience, soft fabric, light wind, no footsteps",
+      transitionToNext: "carry the off-screen attention into the gear adjustment"
+    },
+    {
+      title: "Gear Adjust",
+      startState: "the character keeps looking toward the off-screen cue",
+      firstFrameIntent: "hands and the gear detail are visible before contact",
+      action: "adjust one visible piece of gear",
+      lastFrameIntent: "end with the hand leaving the gear and the face clearer",
+      endState: "the character is prepared and focused",
+      camera: "close medium detail shot with stable framing",
+      soundDesign: "small strap movement, soft fabric, breath, city ambience",
+      transitionToNext: "lift attention from gear to face"
+    },
+    {
+      title: "Face Push",
+      startState: "the character is prepared and turned slightly toward camera",
+      firstFrameIntent: "face, hair, collar, and key outfit details are sharp",
+      action: "turn the eyes and head slightly toward camera",
+      lastFrameIntent: "end on a composed face close-up",
+      endState: "the character holds a decisive expression",
+      camera: "slow close-up push with shallow depth of field",
+      soundDesign: "soft breath, quiet ambience, no footsteps or impacts",
+      transitionToNext: "final shot, hold the expression"
+    }
+  ];
+}
+
+function generalFallbackBeats(): FallbackBeat[] {
+  return [
+    {
+      title: "Opening",
+      startState: "the scene begins on a readable wide view of one continuous location before the character fully moves",
+      firstFrameIntent: "establish the location, lighting direction, character silhouette, and movement direction",
+      action: "enter the scene with one clean motivated movement",
+      lastFrameIntent: "end with the character fully visible and aimed toward the next action",
+      endState: "the character is moving in a clear direction",
+      camera: "wide establishing frame with a slow motivated push-in",
+      soundDesign: "location ambience, soft fabric movement, no loud footsteps until feet are visible",
+      transitionToNext: "carry the same movement direction into the next shot"
+    },
+    {
+      title: "Movement",
+      startState: "the character continues from the previous direction with the same pace and posture",
+      firstFrameIntent: "match the previous end pose and keep the full body readable",
+      action: "perform one clear movement through the environment",
+      lastFrameIntent: "end close enough to reveal face and gear detail",
+      endState: "the character reaches a point where identity and gear can be seen closer",
+      camera: "medium tracking shot that preserves screen direction",
+      soundDesign: "visible footfalls only when feet are shown, fabric movement, matching ambience",
+      transitionToNext: "end in a stable frame that can cut to a detail shot"
+    },
+    {
+      title: "Close Detail",
+      startState: "the character arrives in the same location and turns slightly toward camera",
+      firstFrameIntent: "face, outfit texture, and important gear are readable",
+      action: "settle into one close identity beat",
+      lastFrameIntent: "end with a specific decision or attention shift",
+      endState: "the character notices or decides something specific",
+      camera: "close medium shot with shallow depth of field and restrained motion",
+      soundDesign: "close room tone, soft breath, subtle jacket fabric, no footsteps",
+      transitionToNext: "hold the decision beat so the next shot can show the resulting action"
+    },
+    {
+      title: "Dynamic Push",
+      startState: "the character launches from the previous body angle and keeps the same screen direction",
+      firstFrameIntent: "body is readable at the start of the movement",
+      action: "perform the strongest single physical action in the sequence",
+      lastFrameIntent: "end with the action resolved into a stable pose",
+      endState: "the character slows or lands into a composed final position",
+      camera: "controlled handheld push or tracking move, not chaotic",
+      soundDesign: "visible movement sounds only, brief fabric rush, landing or footfall only if shown",
+      transitionToNext: "finish with a stable pose that can cut into the final look"
+    },
+    {
+      title: "Final Look",
+      startState: "the character settles from the previous motion into a stable final position",
+      firstFrameIntent: "face and silhouette are cleanly readable",
+      action: "hold one clean memorable look that resolves the scene",
+      lastFrameIntent: "end on a stable final expression",
+      endState: "the character holds a confident final expression",
+      camera: "quiet close-up or close medium ending frame",
+      soundDesign: "quiet final ambience, soft breath, subtle fabric, no footsteps or action impacts",
+      transitionToNext: "final shot, no further handoff needed"
+    }
+  ];
+}
+
 function makeShot(input: {
   title: string;
   duration: number;
@@ -435,6 +725,7 @@ function makeShot(input: {
     ratio: input.aspectRatio ?? "16:9",
     resolution: "720p",
     seedanceModel: "fast",
+    generationMode: input.order === 0 ? "omni-reference" : "strict-continuation",
     generateAudio: true,
     status: "draft",
     createdAt: input.now,
@@ -466,8 +757,18 @@ function composeShotPrompt(input: {
   soundDesign?: string;
   transitionToNext?: string;
 }): string {
+  const hasStructuredFields = Boolean(
+    input.startState ||
+      input.firstFrameIntent ||
+      input.action ||
+      input.camera ||
+      input.lastFrameIntent ||
+      input.endState ||
+      input.soundDesign ||
+      input.transitionToNext
+  );
   return [
-    input.prompt,
+    hasStructuredFields ? "Single continuous shot with one main physical action." : input.prompt,
     input.startState ? `Start state: ${input.startState}.` : "",
     input.firstFrameIntent ? `Opening frame intent: ${input.firstFrameIntent}.` : "",
     input.action ? `Main action: ${input.action}.` : "",
@@ -475,7 +776,8 @@ function composeShotPrompt(input: {
     input.lastFrameIntent ? `Ending frame intent: ${input.lastFrameIntent}.` : "",
     input.endState ? `End state: ${input.endState}.` : "",
     input.soundDesign ? `Sound design: ${input.soundDesign}.` : "",
-    input.transitionToNext ? `Continuity handoff: ${input.transitionToNext}.` : ""
+    input.transitionToNext ? `Continuity handoff: ${input.transitionToNext}.` : "",
+    hasStructuredFields ? "Avoid cuts, new locations, outfit changes, identity drift, extra action beats, and unrelated sounds." : ""
   ]
     .filter(Boolean)
     .join(" ");
