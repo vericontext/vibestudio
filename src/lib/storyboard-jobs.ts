@@ -6,7 +6,7 @@ import { DEFAULT_PROJECT_ID, projectFileUrl, projectRelativePath, readRawKeys, w
 import { promptForCli, slugify } from "./prompts";
 import { isRunningStatus, patchShot, readStoryboard, writeStoryboard } from "./storyboard";
 import { runVibe } from "./vibeframe";
-import type { StoryboardProject, StoryboardShot, VideoRatio, VideoResolution } from "./types";
+import type { ExportTransition, StoryboardProject, StoryboardShot, VideoRatio, VideoResolution } from "./types";
 
 const execFileAsync = promisify(execFile);
 const runningShotIds = new Set<string>();
@@ -27,6 +27,24 @@ type ContinuityInput = {
   continuityFrameToken?: string;
   references: string[];
 };
+
+type ExportSegment = {
+  shot: StoryboardShot;
+  abs: string;
+  sourceDuration: number;
+  trimHeadSec: number;
+  trimTailSec: number;
+  effectiveDuration: number;
+  hasAudio: boolean;
+  videoInputIndex: number;
+  audioInputIndex: number;
+  transitionAfter: ExportTransition;
+  transitionDurationSec: number;
+};
+
+const SMART_AUDIO_FADE_SEC = 0.12;
+const MICRO_CUT_SEC = 0.03;
+const TRANSITION_OFFSET_SAFETY_SEC = 0.18;
 
 export async function queueShotGeneration(
   projectId = DEFAULT_PROJECT_ID,
@@ -81,20 +99,46 @@ export async function exportStoryboard(projectId = DEFAULT_PROJECT_ID): Promise<
     if (!rel) throw new Error(`Shot has no output: ${shot.title}`);
     const abs = projectRelativePath(projectId, rel);
     if (!existsSync(abs)) throw new Error(`Shot output is missing: ${shot.title}`);
+    const sourceDuration = await videoDuration(abs);
     return {
+      shot,
       abs,
-      duration: shot.duration,
+      sourceDuration: sourceDuration > 0 ? sourceDuration : shot.duration,
       hasAudio: await hasAudioStream(abs)
     };
   }));
   const ffmpegInputs: string[] = [];
   let nextInputIndex = 0;
-  const segments = inputs.map((input) => {
+  const segments = inputs.map((input, index): ExportSegment => {
+    const trimHeadSec = Math.min(input.shot.trimHeadSec, Math.max(0, input.sourceDuration - 0.5));
+    const trimTailSec = Math.min(
+      input.shot.trimTailSec,
+      Math.max(0, input.sourceDuration - trimHeadSec - 0.5)
+    );
+    const effectiveDuration = roundSeconds(input.sourceDuration - trimHeadSec - trimTailSec);
+    if (effectiveDuration < 0.5) {
+      throw new Error(`Shot is too short after trim: ${input.shot.title}`);
+    }
     const videoInputIndex = nextInputIndex;
     nextInputIndex += 1;
     ffmpegInputs.push("-i", input.abs);
+    const transitionAfter = index >= inputs.length - 1 ? "cut" : input.shot.transitionAfter;
+    const nextDuration = inputs[index + 1]?.sourceDuration ?? effectiveDuration;
+    const transitionDurationSec =
+      transitionAfter === "cut"
+        ? 0
+        : safeTransitionDuration(input.shot.transitionDurationSec, effectiveDuration, nextDuration);
     if (input.hasAudio) {
-      return { ...input, videoInputIndex, audioInputIndex: videoInputIndex };
+      return {
+        ...input,
+        trimHeadSec,
+        trimTailSec,
+        effectiveDuration,
+        videoInputIndex,
+        audioInputIndex: videoInputIndex,
+        transitionAfter,
+        transitionDurationSec
+      };
     }
     const audioInputIndex = nextInputIndex;
     nextInputIndex += 1;
@@ -102,27 +146,25 @@ export async function exportStoryboard(projectId = DEFAULT_PROJECT_ID): Promise<
       "-f",
       "lavfi",
       "-t",
-      String(input.duration),
+      String(effectiveDuration),
       "-i",
       "anullsrc=channel_layout=stereo:sample_rate=48000"
     );
-    return { ...input, videoInputIndex, audioInputIndex };
+    return {
+      ...input,
+      trimHeadSec,
+      trimTailSec,
+      effectiveDuration,
+      videoInputIndex,
+      audioInputIndex,
+      transitionAfter,
+      transitionDurationSec
+    };
   });
-  const filter = [
-    segments
-      .map(
-        (input, index) =>
-          `[${input.videoInputIndex}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p,trim=duration=${input.duration},setpts=PTS-STARTPTS[v${index}]`
-      )
-      .join(";"),
-    segments
-      .map(
-        (input, index) =>
-          `[${input.audioInputIndex}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=${input.duration},atrim=0:${input.duration},afade=t=in:st=0:d=0.05,afade=t=out:st=${Math.max(0, input.duration - 0.05).toFixed(2)}:d=0.05,asetpts=PTS-STARTPTS[a${index}]`
-      )
-      .join(";"),
-    `${segments.map((_input, index) => `[v${index}][a${index}]`).join("")}concat=n=${segments.length}:v=1:a=1[v][a]`
-  ].join(";");
+  const hasVisualTransitions = segments.some((segment) => segment.transitionAfter !== "cut");
+  const { filter, duration: estimatedDuration } = hasVisualTransitions
+    ? buildTransitionExportFilter(segments, width, height)
+    : buildSmartCutExportFilter(segments, width, height);
 
   try {
     await execFileAsync(
@@ -162,10 +204,25 @@ export async function exportStoryboard(projectId = DEFAULT_PROJECT_ID): Promise<
     label: "Storyboard Export",
     shots: shots.map((shot) => ({ id: shot.id, title: shot.title, relPath: shot.outputRelPath })),
     targetDuration: storyboard.targetDuration,
-    duration: shots.reduce((total, shot) => total + shot.duration, 0),
+    duration: roundSeconds((await videoDuration(outputAbs)) || estimatedDuration),
     ratio: shots[0]?.ratio ?? "16:9",
     resolution: shots[0]?.resolution ?? "720p",
-    audio: "native-concat",
+    audio: hasVisualTransitions ? "native-transition-chain" : "native-smart-cut",
+    exportSettings: {
+      mode: hasVisualTransitions ? "mixed-transitions" : "smart-cut",
+      defaultAudioFadeSec: SMART_AUDIO_FADE_SEC,
+      estimatedDuration,
+      segments: segments.map((segment) => ({
+        shotId: segment.shot.id,
+        title: segment.shot.title,
+        sourceDuration: segment.sourceDuration,
+        trimHeadSec: segment.trimHeadSec,
+        trimTailSec: segment.trimTailSec,
+        effectiveDuration: segment.effectiveDuration,
+        transitionAfter: segment.transitionAfter,
+        transitionDurationSec: segment.transitionDurationSec
+      }))
+    },
     audioSegments: segments.map((segment, index) => ({
       shotId: shots[index]?.id,
       title: shots[index]?.title,
@@ -175,6 +232,87 @@ export async function exportStoryboard(projectId = DEFAULT_PROJECT_ID): Promise<
 
   const next = await writeStoryboard(projectId, { ...storyboard, exportRelPath: relPath });
   return { storyboard: next, relPath, url: projectFileUrl(projectId, relPath) };
+}
+
+function buildSmartCutExportFilter(
+  segments: ExportSegment[],
+  width: number,
+  height: number
+): { filter: string; duration: number } {
+  const filters = [
+    ...segments.map((segment, index) => videoSegmentFilter(segment, index, width, height)),
+    ...segments.map((segment, index) => audioSegmentFilter(segment, index, true)),
+    `${segments.map((_segment, index) => `[v${index}][a${index}]`).join("")}concat=n=${segments.length}:v=1:a=1[v][a]`
+  ];
+  return {
+    filter: filters.join(";"),
+    duration: roundSeconds(segments.reduce((total, segment) => total + segment.effectiveDuration, 0))
+  };
+}
+
+function buildTransitionExportFilter(
+  segments: ExportSegment[],
+  width: number,
+  height: number
+): { filter: string; duration: number } {
+  const filters = [
+    ...segments.map((segment, index) => videoSegmentFilter(segment, index, width, height)),
+    ...segments.map((segment, index) => audioSegmentFilter(segment, index, false))
+  ];
+  let videoLabel = "v0";
+  let audioLabel = "a0";
+  let duration = segments[0]?.effectiveDuration ?? 0;
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index];
+    const nextDuration = segments[index + 1].effectiveDuration;
+    const transitionSec =
+      segment.transitionAfter === "cut"
+        ? Math.min(MICRO_CUT_SEC, duration / 3, nextDuration / 3)
+        : safeTransitionDuration(segment.transitionDurationSec, duration, nextDuration);
+    const overlapSec = Math.min(transitionSec + TRANSITION_OFFSET_SAFETY_SEC, duration / 3, nextDuration / 3);
+    const transitionName = segment.transitionAfter === "dip-to-black" ? "fadeblack" : "fade";
+    const offset = Math.max(0, duration - overlapSec);
+    const nextVideoLabel = `vx${index + 1}`;
+    const nextAudioLabel = `ax${index + 1}`;
+    filters.push(
+      `[${videoLabel}][v${index + 1}]xfade=transition=${transitionName}:duration=${ffmpegNum(transitionSec)}:offset=${ffmpegNum(offset)},format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[${nextVideoLabel}]`
+    );
+    filters.push(
+      `[${audioLabel}][a${index + 1}]acrossfade=d=${ffmpegNum(overlapSec)}:c1=tri:c2=tri[${nextAudioLabel}]`
+    );
+    duration = roundSeconds(offset + nextDuration);
+    videoLabel = nextVideoLabel;
+    audioLabel = nextAudioLabel;
+  }
+  filters.push(`[${videoLabel}]copy[v]`);
+  filters.push(`[${audioLabel}]acopy[a]`);
+  return { filter: filters.join(";"), duration };
+}
+
+function videoSegmentFilter(segment: ExportSegment, index: number, width: number, height: number): string {
+  return `[${segment.videoInputIndex}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,format=yuv420p,settb=AVTB,trim=start=${ffmpegNum(segment.trimHeadSec)}:duration=${ffmpegNum(segment.effectiveDuration)},setpts=PTS-STARTPTS[v${index}]`;
+}
+
+function audioSegmentFilter(segment: ExportSegment, index: number, useBoundaryFades: boolean): string {
+  const fadeSec = Math.min(SMART_AUDIO_FADE_SEC, segment.effectiveDuration / 4);
+  const trimStart = segment.hasAudio ? segment.trimHeadSec : 0;
+  const fades = useBoundaryFades
+    ? `,afade=t=in:st=0:d=${ffmpegNum(fadeSec)},afade=t=out:st=${ffmpegNum(Math.max(0, segment.effectiveDuration - fadeSec))}:d=${ffmpegNum(fadeSec)}`
+    : "";
+  return `[${segment.audioInputIndex}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=${ffmpegNum(segment.effectiveDuration)},atrim=start=${ffmpegNum(trimStart)}:duration=${ffmpegNum(segment.effectiveDuration)}${fades},asetpts=PTS-STARTPTS[a${index}]`;
+}
+
+function safeTransitionDuration(value: number, leftDuration: number, rightDuration: number): number {
+  const maxDuration = Math.max(0.1, Math.min(leftDuration, rightDuration) / 2);
+  return roundSeconds(Math.max(0.1, Math.min(value, maxDuration, 1.5)));
+}
+
+function roundSeconds(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+function ffmpegNum(value: number): string {
+  return roundSeconds(value).toFixed(3).replace(/\.?0+$/, "");
 }
 
 function enqueueShot(projectId: string, shotId: string): void {
@@ -426,6 +564,27 @@ async function createSilentContinuityVideo(
 }
 
 async function videoDuration(input: string): Promise<number> {
+  try {
+    const { stdout } = await execFileAsync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        input
+      ],
+      { timeout: 30 * 1000, maxBuffer: 1024 * 1024 }
+    );
+    const duration = Number.parseFloat(stdout.trim());
+    if (Number.isFinite(duration) && duration > 0) return duration;
+  } catch {
+    // Fall back below for files that do not report per-stream duration.
+  }
   const { stdout } = await execFileAsync(
     "ffprobe",
     ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", input],

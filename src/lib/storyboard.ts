@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_PROJECT_ID, ensureProject, projectRelativePath } from "./projects";
 import type {
+  ExportTransition,
   GenerationMode,
   SeedanceModel,
   StoryboardProject,
@@ -24,6 +25,10 @@ export type ShotPatch = Partial<
     | "resolution"
     | "seedanceModel"
     | "generationMode"
+    | "trimHeadSec"
+    | "trimTailSec"
+    | "transitionAfter"
+    | "transitionDurationSec"
     | "generateAudio"
     | "status"
     | "outputRelPath"
@@ -68,6 +73,11 @@ export async function addShot(
     ratio: patch.ratio,
     resolution: patch.resolution,
     seedanceModel: patch.seedanceModel,
+    generationMode: patch.generationMode,
+    trimHeadSec: patch.trimHeadSec,
+    trimTailSec: patch.trimTailSec,
+    transitionAfter: patch.transitionAfter,
+    transitionDurationSec: patch.transitionDurationSec,
     generateAudio: patch.generateAudio
   });
   return writeStoryboard(projectId, { ...storyboard, shots: [...storyboard.shots, shot] });
@@ -115,6 +125,10 @@ export function createShot(input: {
   resolution?: VideoResolution;
   seedanceModel?: SeedanceModel;
   generationMode?: GenerationMode;
+  trimHeadSec?: number;
+  trimTailSec?: number;
+  transitionAfter?: ExportTransition;
+  transitionDurationSec?: number;
   generateAudio?: boolean;
 }): StoryboardShot {
   const now = new Date().toISOString();
@@ -132,6 +146,10 @@ export function createShot(input: {
       resolution: input.resolution ?? "720p",
       seedanceModel: input.seedanceModel ?? "fast",
       generationMode: input.generationMode ?? defaultGenerationMode(input.order),
+      trimHeadSec: input.trimHeadSec ?? 0,
+      trimTailSec: input.trimTailSec ?? 0,
+      transitionAfter: input.transitionAfter ?? "cut",
+      transitionDurationSec: input.transitionDurationSec ?? 0.25,
       generateAudio: input.generateAudio ?? true,
       status: "draft",
       createdAt: now,
@@ -170,6 +188,10 @@ export function normalizeShot(input: Partial<StoryboardShot>, order: number): St
     resolution: normalizeResolution(input.resolution),
     seedanceModel: normalizeSeedanceModel(input.seedanceModel),
     generationMode: normalizeGenerationMode(input.generationMode, order),
+    trimHeadSec: clampTrimSeconds(input.trimHeadSec),
+    trimTailSec: clampTrimSeconds(input.trimTailSec),
+    transitionAfter: normalizeExportTransition(input.transitionAfter),
+    transitionDurationSec: clampTransitionSeconds(input.transitionDurationSec),
     generateAudio: input.generateAudio !== false,
     status: normalizeStatus(input.status),
     outputRelPath: typeof input.outputRelPath === "string" ? input.outputRelPath : undefined,
@@ -220,6 +242,20 @@ function normalizeGenerationMode(value: unknown, order: number): GenerationMode 
   }
   if (value === "keyframe-bridge") return "strict-continuation";
   return defaultGenerationMode(order);
+}
+
+function normalizeExportTransition(value: unknown): ExportTransition {
+  return value === "crossfade" || value === "dip-to-black" || value === "cut" ? value : "cut";
+}
+
+function clampTrimSeconds(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(3, Math.round(value * 100) / 100));
+}
+
+function clampTransitionSeconds(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.25;
+  return Math.max(0.1, Math.min(1.5, Math.round(value * 100) / 100));
 }
 
 function normalizeStatus(value: unknown): StoryboardShot["status"] {

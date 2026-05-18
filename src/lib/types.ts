@@ -40,6 +40,8 @@ export type SeedanceModel = "quality" | "fast";
 
 export type GenerationMode = "omni-reference" | "strict-continuation" | "keyframe-bridge";
 
+export type ExportTransition = "cut" | "crossfade" | "dip-to-black";
+
 export type GenerateImagesRequest = {
   characterName?: string;
   character: string;
@@ -85,6 +87,10 @@ export type StoryboardShot = {
   resolution: VideoResolution;
   seedanceModel: SeedanceModel;
   generationMode: GenerationMode;
+  trimHeadSec: number;
+  trimTailSec: number;
+  transitionAfter: ExportTransition;
+  transitionDurationSec: number;
   generateAudio: boolean;
   status: ShotStatus;
   outputRelPath?: string;

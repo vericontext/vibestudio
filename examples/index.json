@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-18T05:56:05.613Z",
+  "runs": [
+    {
+      "id": "20260518055542-push-off-from-ledge",
+      "title": "Jaro - Push Off From Ledge",
+      "createdAt": "2026-05-18T05:55:42.233Z",
+      "thumbnailUrl": "https://pub-f51ddfc206064a4b81f8f1375d290e3e.r2.dev/runs/20260518055542-push-off-from-ledge/thumbnail.jpg",
+      "videoUrl": "https://pub-f51ddfc206064a4b81f8f1375d290e3e.r2.dev/runs/20260518055542-push-off-from-ledge/export.mp4",
+      "duration": 32.75,
+      "shotCount": 7,
+      "tags": [
+        "character-sheet",
+        "seedance",
+        "omni-reference",
+        "fast",
+        "strict-continuation"
+      ]
+    }
+  ]
+}

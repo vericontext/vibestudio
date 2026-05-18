@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VibeStudio Prompt Library</title>
+    <meta
+      name="description"
+      content="Curated VibeStudio prompt library and AI video gallery with copyable character sheets, storyboard prompts, and Seedance prompts."
+    />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">VibeStudio</div>
+        <h1>Prompt Library + Gallery</h1>
+      </div>
+      <a class="repo-link" href="https://github.com/vericontext/vibestudio">GitHub</a>
+    </header>
+
+    <main class="shell">
+      <section class="gallery-panel">
+        <div class="section-head">
+          <h2>Runs</h2>
+          <span id="run-count" class="muted">Loading</span>
+        </div>
+        <div id="run-grid" class="run-grid"></div>
+      </section>
+
+      <section id="detail" class="detail-panel">
+        <div class="empty-state">
+          <h2>No run selected</h2>
+          <p>Select a run to inspect the output, references, and copyable prompts.</p>
+        </div>
+      </section>
+    </main>
+
+    <template id="run-card-template">
+      <button class="run-card" type="button">
+        <img class="run-thumb" alt="" />
+        <span class="run-card-body">
+          <span class="run-title"></span>
+          <span class="run-meta"></span>
+          <span class="run-tags"></span>
+        </span>
+      </button>
+    </template>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

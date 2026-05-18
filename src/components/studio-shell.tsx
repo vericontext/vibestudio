@@ -27,6 +27,7 @@ import {
   X
 } from "lucide-react";
 import type {
+  ExportTransition,
   GenerationMode,
   ProjectStatus,
   SeedanceModel,
@@ -69,7 +70,20 @@ type DraftForm = {
   visualStyle: string;
 };
 
-type Busy = "keys" | "images" | "refresh" | "delete" | "draft" | "shot" | "all" | "export" | null;
+type Busy =
+  | "keys"
+  | "images"
+  | "refresh"
+  | "delete"
+  | "draft"
+  | "recipe"
+  | "shot"
+  | "all"
+  | "export"
+  | "run"
+  | "publish"
+  | "gallery"
+  | null;
 type SaveState = "saved" | "saving" | "error";
 
 type ReferenceOption = {
@@ -107,6 +121,23 @@ type StoryboardPreset = {
   label: string;
   detail: string;
   form: DraftForm;
+};
+
+type PromptRecipe = {
+  label: string;
+  detail: string;
+  sourceNote: string;
+  tags: string[];
+  recommendedMode: GenerationMode;
+  form: DraftForm;
+};
+
+type PublishedRunState = {
+  id: string;
+  title: string;
+  videoUrl: string;
+  thumbnailPublicUrl: string;
+  manifestUrl: string;
 };
 
 const defaultImageForm: ImageForm = {
@@ -220,8 +251,63 @@ const storyboardPresets: StoryboardPreset[] = [
   }
 ];
 
+const promptRecipes: PromptRecipe[] = [
+  {
+    label: "Omni Action Chase",
+    detail: "15s",
+    sourceNote: "Adapted from short X-style Seedance Omni Reference action prompts.",
+    tags: ["omni-reference", "tokyo", "parkour"],
+    recommendedMode: "omni-reference",
+    form: {
+      brief:
+        "Use the active character sheet as the direct character reference. Create a 15 second action video: tracking camera follows the same character running through rainy Tokyo streets, avoiding obstacles with parkour, then being cornered in a neon alley before launching into one attack beat.",
+      targetDuration: 15,
+      sceneCount: "1",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "Seedance 2.0 Omni Reference, cinematic anime realism, high readability, tracking camera, wet neon reflections, foreground occlusion, no calm intro, start directly in action"
+    }
+  },
+  {
+    label: "Storyboard Martial",
+    detail: "12 beats",
+    sourceNote: "Adapted from sequential storyboard-sheet martial arts prompt patterns.",
+    tags: ["storyboard-sheet", "martial-arts", "keyframes"],
+    recommendedMode: "omni-reference",
+    form: {
+      brief:
+        "Use the active storyboard or character sheet as a sequential visual keyframe reference. Create a 15 second cinematic martial arts sequence in an ancient stone temple: airborne opening strike, close staff sweep, orbiting spin, floor impact, side kick, top-down aerial turn, landing stomp, sliding sweep, flurry combo, beast stance, elemental vortex, final airborne strike.",
+      targetDuration: 15,
+      sceneCount: "12",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "cinematic live-action anime realism, strong silhouettes, harsh light shafts, temple smoke, dust displacement, golden-orange energy accents, fast but readable choreography, no extra characters"
+    }
+  },
+  {
+    label: "Rhythmic Performance",
+    detail: "Sports",
+    sourceNote: "Adapted from rhythmic performance / batting cage Seedance prompts.",
+    tags: ["performance", "rhythm", "sports"],
+    recommendedMode: "omni-reference",
+    form: {
+      brief:
+        "Use the active character sheet as the performer reference. Create a 15 second rhythmic batting cage performance inside a giant industrial indoor batting cage: synchronized batting flow, one-handed bat twirls, behind-the-back passes, stylish stance transitions, perfect hits from a pitching machine, shockwave contact moments, and a final god-tier slow-motion hero swing.",
+      targetDuration: 15,
+      sceneCount: "5",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "modern painterly anime illustration, editorial sports fashion art, soft digital oil painting, visible brush strokes, clean cinematic lighting, dynamic tilted framing, foreground net occlusion"
+    }
+  }
+];
+
 const draftSceneCountOptions: DraftSceneCount[] = ["auto", "1", "2", "3", "4", "5", "6", "8", "10", "12"];
 const pacingOptions: StoryboardPacing[] = ["auto", "slow", "balanced", "fast"];
+const transitionOptions: ExportTransition[] = ["cut", "crossfade", "dip-to-black"];
 const MIN_STORYBOARD_SHOT_DURATION = 4;
 const MAX_STORYBOARD_SHOT_DURATION = 15;
 const MAX_DRAFT_SCENE_COUNT = 12;
@@ -270,6 +356,7 @@ export function StudioShell() {
   const [imageForm, setImageForm] = useState<ImageForm>(defaultImageForm);
   const [draftForm, setDraftForm] = useState<DraftForm>(defaultDraftForm);
   const [draftPreview, setDraftPreview] = useState<StoryboardDraftResult | null>(null);
+  const [publishedRun, setPublishedRun] = useState<PublishedRunState | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [log, setLog] = useState<string[]>([]);
@@ -311,6 +398,9 @@ export function StudioShell() {
   const allShotsReady =
     Boolean(storyboard?.shots.length) &&
     storyboard?.shots.every((shot) => shot.status === "done" && shot.outputRelPath);
+  const canSaveRun = Boolean(storyboard?.exportRelPath) && busy === null;
+  const canPublishRun = Boolean(storyboard?.exportRelPath) && busy === null;
+  const canAddGallery = Boolean(publishedRun?.id) && busy === null;
   const storyboardPreviewClips = useMemo(
     () => buildStoryboardPreviewClips(storyboard, project?.assets ?? []),
     [storyboard, project?.assets]
@@ -381,6 +471,10 @@ export function StudioShell() {
     if (selectedShotId && storyboard.shots.some((shot) => shot.id === selectedShotId)) return;
     setSelectedShotId(storyboard.shots[0]?.id ?? null);
   }, [storyboard, selectedShotId]);
+
+  useEffect(() => {
+    setPublishedRun(null);
+  }, [storyboard?.exportRelPath]);
 
   useEffect(() => {
     if (!project) return;
@@ -590,6 +684,35 @@ export function StudioShell() {
     pushLog(`Loaded ${preset.label} storyboard preset`);
   }
 
+  function applyPromptRecipe(recipe: PromptRecipe) {
+    setDraftForm({ ...recipe.form });
+    setDraftPreview(null);
+    pushLog(`Loaded ${recipe.label} prompt recipe`);
+  }
+
+  async function saveSelectedPromptRecipe() {
+    if (!selectedShot) return;
+    setBusy("recipe");
+    try {
+      const data = await requestJson<{ success: true; recipe: { title: string } }>("/api/prompt-recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: selectedShot.title,
+          prompt: selectedShot.prompt,
+          sourceNote: "Saved from VibeStudio Shot Inspector.",
+          tags: ["local", selectedShot.generationMode, selectedShot.seedanceModel],
+          recommendedMode: selectedShot.generationMode === "omni-reference" ? "omni-reference" : "strict-continuation"
+        })
+      });
+      pushLog(`Saved prompt recipe: ${data.recipe.title}`);
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Prompt recipe save failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function applyDraftStoryboard() {
     if (!draftPreview) return;
     const now = new Date().toISOString();
@@ -630,6 +753,10 @@ export function StudioShell() {
       resolution: "720p" as VideoResolution,
       seedanceModel: "fast" as SeedanceModel,
       generationMode: index === 0 ? "omni-reference" as GenerationMode : "strict-continuation" as GenerationMode,
+      trimHeadSec: 0,
+      trimTailSec: 0,
+      transitionAfter: "cut" as ExportTransition,
+      transitionDurationSec: 0.25,
       generateAudio: true,
       status: "draft" as const,
       createdAt: now,
@@ -666,6 +793,10 @@ export function StudioShell() {
       resolution: selectedShot?.resolution ?? "720p",
       seedanceModel: selectedShot?.seedanceModel ?? "fast",
       generationMode: currentShots.length === 0 ? "omni-reference" : "strict-continuation",
+      trimHeadSec: 0,
+      trimTailSec: 0,
+      transitionAfter: "cut",
+      transitionDurationSec: 0.25,
       generateAudio: true,
       status: "draft",
       createdAt: now,
@@ -898,6 +1029,70 @@ export function StudioShell() {
     }
   }
 
+  async function saveRun() {
+    const saved = await saveStoryboardNow();
+    if (!saved) return;
+    setBusy("run");
+    try {
+      const data = await requestJson<{
+        success: true;
+        run: {
+          title: string;
+          manifestRelPath: string;
+          thumbnailRelPath: string;
+          thumbnailUrl: string;
+          exportRelPath: string;
+          exportUrl: string;
+        };
+      }>("/api/runs/save", { method: "POST" });
+      pushLog(`Saved run snapshot: ${data.run.title}`);
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Run save failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function publishRun() {
+    const saved = await saveStoryboardNow();
+    if (!saved) return;
+    setBusy("publish");
+    try {
+      const data = await requestJson<{
+        success: true;
+        run: PublishedRunState;
+      }>("/api/runs/publish", { method: "POST" });
+      setPublishedRun(data.run);
+      pushLog(`Published run to R2: ${data.run.title}`);
+      pushLog(`Public video: ${data.run.videoUrl}`);
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Run publish failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addPublishedRunToGallery() {
+    if (!publishedRun) return;
+    setBusy("gallery");
+    try {
+      const data = await requestJson<{
+        success: true;
+        gallery: { entryRelPath: string; indexRelPath: string };
+      }>("/api/gallery/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: publishedRun.id })
+      });
+      pushLog(`Added gallery entry: ${data.gallery.entryRelPath}`);
+      pushLog(`Updated gallery index: ${data.gallery.indexRelPath}`);
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Gallery export failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function pushLog(message: string) {
     setLog((items) => [`${new Date().toLocaleTimeString()}  ${message}`, ...items].slice(0, 10));
   }
@@ -1007,6 +1202,9 @@ export function StudioShell() {
             previewMissingCount={storyboardPreviewMissingShots.length}
             hasRunningShots={hasRunningShots}
             allShotsReady={Boolean(allShotsReady)}
+            canSaveRun={canSaveRun}
+            canPublishRun={canPublishRun}
+            canAddGallery={canAddGallery}
             canGenerateAll={canGenerateAll}
             busy={busy}
             onCreateDefault={draftStoryboard}
@@ -1019,6 +1217,9 @@ export function StudioShell() {
             onMove={moveShot}
             onGenerateAll={generateAllShots}
             onExport={exportStory}
+            onSaveRun={saveRun}
+            onPublishRun={publishRun}
+            onAddGallery={addPublishedRunToGallery}
           />
         </section>
 
@@ -1138,6 +1339,28 @@ export function StudioShell() {
                 icon={busy === "images" ? <Loader2 size={15} className="animate-spin" /> : <ImageIcon size={15} />}
                 label="Generate character sheet"
               />
+            </div>
+          </Panel>
+
+          <Panel title="Prompt Recipes" icon={<Sparkles size={16} />}>
+            <div className="grid gap-2">
+              {promptRecipes.map((recipe) => (
+                <button
+                  key={recipe.label}
+                  onClick={() => applyPromptRecipe(recipe)}
+                  className="rounded border border-border bg-white p-2 text-left hover:bg-panel"
+                  title={recipe.sourceNote}
+                >
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-ink">{recipe.label}</span>
+                    <span className="rounded bg-panel2 px-2 py-0.5 text-[11px] text-muted">{recipe.detail}</span>
+                  </div>
+                  <div className="mt-1 max-h-8 overflow-hidden text-xs text-muted">{recipe.form.brief}</div>
+                </button>
+              ))}
+              <div className="rounded border border-border bg-panel p-2 text-xs text-muted">
+                External prompts are stored as adapted recipes with source notes, not raw prompt dumps.
+              </div>
             </div>
           </Panel>
 
@@ -1331,6 +1554,49 @@ export function StudioShell() {
                     options={["omni-reference", "strict-continuation"]}
                   />
                 </label>
+                <div className="grid gap-2 rounded border border-border bg-panel p-2">
+                  <div className="text-[11px] font-semibold text-muted">Export cut</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                      Trim head
+                      <DecimalInput
+                        value={selectedShot.trimHeadSec}
+                        min={0}
+                        max={3}
+                        step={0.05}
+                        onChange={(value) => updateSelectedShot({ trimHeadSec: value })}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                      Trim tail
+                      <DecimalInput
+                        value={selectedShot.trimTailSec}
+                        min={0}
+                        max={3}
+                        step={0.05}
+                        onChange={(value) => updateSelectedShot({ trimTailSec: value })}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                      Transition after
+                      <Select
+                        value={selectedShot.transitionAfter}
+                        onChange={(value) => updateSelectedShot({ transitionAfter: value as ExportTransition })}
+                        options={transitionOptions}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                      Transition sec
+                      <DecimalInput
+                        value={selectedShot.transitionDurationSec}
+                        min={0.1}
+                        max={1.5}
+                        step={0.05}
+                        onChange={(value) => updateSelectedShot({ transitionDurationSec: value })}
+                      />
+                    </label>
+                  </div>
+                </div>
                 <PromptLintMessages shot={selectedShot} references={referenceOptions} />
                 <div className="grid grid-cols-3 gap-2">
                   {[5, 10, 15].map((duration) => (
@@ -1365,6 +1631,14 @@ export function StudioShell() {
                   icon={busy === "shot" ? <Loader2 size={15} className="animate-spin" /> : <Video size={15} />}
                   label={selectedShot.status === "failed" ? "Retry shot" : "Generate selected"}
                 />
+                <button
+                  onClick={saveSelectedPromptRecipe}
+                  disabled={busy === "recipe" || !selectedShot.prompt.trim()}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded border border-border bg-white px-3 text-sm font-medium hover:bg-panel disabled:cursor-not-allowed"
+                >
+                  {busy === "recipe" ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  Save as recipe
+                </button>
               </div>
             )}
           </Panel>
@@ -1559,6 +1833,9 @@ function StoryboardLane({
   previewMissingCount,
   hasRunningShots,
   allShotsReady,
+  canSaveRun,
+  canPublishRun,
+  canAddGallery,
   canGenerateAll,
   busy,
   onCreateDefault,
@@ -1570,7 +1847,10 @@ function StoryboardLane({
   onDelete,
   onMove,
   onGenerateAll,
-  onExport
+  onExport,
+  onSaveRun,
+  onPublishRun,
+  onAddGallery
 }: {
   storyboard: StoryboardProject | null;
   assets: StudioAsset[];
@@ -1580,6 +1860,9 @@ function StoryboardLane({
   previewMissingCount: number;
   hasRunningShots: boolean;
   allShotsReady: boolean;
+  canSaveRun: boolean;
+  canPublishRun: boolean;
+  canAddGallery: boolean;
   canGenerateAll: boolean;
   busy: Busy;
   onCreateDefault: () => void;
@@ -1592,6 +1875,9 @@ function StoryboardLane({
   onMove: (shot: StoryboardShot, direction: -1 | 1) => void;
   onGenerateAll: () => void;
   onExport: () => void;
+  onSaveRun: () => void;
+  onPublishRun: () => void;
+  onAddGallery: () => void;
 }) {
   const shots = storyboard?.shots ?? [];
   return (
@@ -1636,6 +1922,27 @@ function StoryboardLane({
             disabled={!allShotsReady || busy === "export"}
             icon={busy === "export" ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
             label="Export"
+          />
+          <MiniButton
+            onClick={onSaveRun}
+            disabled={!canSaveRun}
+            icon={busy === "run" ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            label="Run"
+            title={canSaveRun ? "Save prompt/result run snapshot" : "Export first before saving a run"}
+          />
+          <MiniButton
+            onClick={onPublishRun}
+            disabled={!canPublishRun}
+            icon={busy === "publish" ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            label="Publish"
+            title={canPublishRun ? "Upload current export, thumbnail, manifest, and references to R2" : "Export first before publishing"}
+          />
+          <MiniButton
+            onClick={onAddGallery}
+            disabled={!canAddGallery}
+            icon={busy === "gallery" ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
+            label="Gallery"
+            title={canAddGallery ? "Write curated examples JSON for GitHub Pages" : "Publish to R2 before adding to gallery"}
           />
         </div>
       </div>
@@ -1688,7 +1995,7 @@ function ShotCard({
 }) {
   return (
     <div
-      className={`h-[181px] w-[220px] shrink-0 overflow-hidden rounded border bg-white ${
+      className={`h-[190px] w-[252px] shrink-0 overflow-hidden rounded border bg-white ${
         selected ? "border-accent shadow-sm" : "border-border"
       }`}
     >
@@ -1697,7 +2004,7 @@ function ShotCard({
           onSelect();
           if (asset) onPreview(asset);
         }}
-        className="relative block h-[112px] w-full bg-panel text-left"
+        className="relative block h-[110px] w-full bg-panel text-left"
       >
         {asset ? (
           <Thumb asset={asset} />
@@ -1710,16 +2017,16 @@ function ShotCard({
           {shot.order + 1}
         </span>
       </button>
-      <div className="grid gap-1 p-2 text-xs">
-        <div className="flex items-center justify-between gap-2">
-          <button onClick={onSelect} className="min-w-0 truncate text-left font-semibold">
+      <div className="grid h-[80px] grid-rows-[auto_auto] gap-2 p-2 text-xs">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <button onClick={onSelect} className="min-w-0 truncate text-left font-semibold" title={shot.title}>
             {shot.title}
           </button>
           <span className="shrink-0 text-muted">{shot.duration}s</span>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex min-w-0 items-center justify-between gap-2">
           <ShotStatusBadge status={shot.status} compact />
-          <div className="flex items-center gap-1">
+          <div className="grid shrink-0 grid-cols-4 gap-1">
             <button className="card-tool" onClick={onMoveLeft} aria-label="Move shot left">
               <ChevronLeft size={13} />
             </button>
@@ -2357,6 +2664,36 @@ function NumberInput({
       onChange={(event) => onChange(Number.parseInt(event.target.value, 10) || 5)}
       min={min}
       max={max}
+      type="number"
+      className="h-9 rounded border border-border px-2 text-sm outline-none focus:border-accent"
+    />
+  );
+}
+
+function DecimalInput({
+  value,
+  onChange,
+  min,
+  max,
+  step
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  step: number;
+}) {
+  return (
+    <input
+      value={value}
+      onChange={(event) => {
+        const next = Number.parseFloat(event.target.value);
+        if (!Number.isFinite(next)) return;
+        onChange(Math.max(min, Math.min(max, Math.round(next * 100) / 100)));
+      }}
+      min={min}
+      max={max}
+      step={step}
       type="number"
       className="h-9 rounded border border-border px-2 text-sm outline-none focus:border-accent"
     />
