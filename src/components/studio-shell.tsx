@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Archive,
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
@@ -10,6 +11,7 @@ import {
   Copy,
   Eye,
   Film,
+  FolderOpen,
   Image as ImageIcon,
   KeyRound,
   Loader2,
@@ -141,6 +143,8 @@ type PublishedRunState = {
   manifestUrl: string;
 };
 
+type ClipLibraryFilter = "current" | "previous" | "archived";
+
 const defaultImageForm: ImageForm = {
   characterName: "Mina",
   character:
@@ -216,6 +220,21 @@ const characterPresets: CharacterPreset[] = [
 ];
 
 const storyboardPresets: StoryboardPreset[] = [
+  {
+    label: "Neon Abyss",
+    detail: "1x15s",
+    form: {
+      brief:
+        "A 15 second timecoded micro-beat action experiment for a masked cyberpunk blade runner inside a kilometer-deep cylindrical neon megacity shaft. Use the active character sheet as the consistent character reference. The sequence starts immediately with a close activation detail, reveals the impossible vertical scale, then follows Rin stepping off a ledge, freefalling through the shaft, dodging drones, drawing a neon tanto, slicing one drone, firing a grapple, swinging to a lower gantry, and landing in a clean final pose. The video should feel like 14 rapid cinematic effect beats inside one polished action trailer shot list, not a calm continuous rooftop run.",
+      targetDuration: 15,
+      sceneCount: "1",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "Seedance 2.0 quality experiment, cinematic anime realism, vertical megacity abyss, god-view scale reveal, bullet-time orbital hero beat, radial motion blur, first-person plunge, whip-pan drone reveal, chromatic aberration, rain mist, glass reflections, cyan-magenta neon, strong parallax, fast but readable micro-shot rhythm",
+      seedanceModel: "quality"
+    }
+  },
   {
     label: "Blade Runner Hero",
     detail: "2x15s",
@@ -294,6 +313,24 @@ const storyboardPresets: StoryboardPreset[] = [
 ];
 
 const promptRecipes: PromptRecipe[] = [
+  {
+    label: "Neon Abyss Freefall",
+    detail: "15 beats",
+    sourceNote: "Experimental timecoded micro-beat prompt pattern for high-motion Seedance tests.",
+    tags: ["micro-beats", "freefall", "drones"],
+    recommendedMode: "omni-reference",
+    form: {
+      brief:
+        "Use the active character sheet as the direct character reference. Create a 15 second cinematic anime-realism action sequence inside a kilometer-deep cylindrical neon megacity shaft. Same masked cyberpunk blade runner throughout: white bob hair, black rain jacket, red accents, compact neon tanto, athletic body, same face and outfit. No text, no logo, no watermark. Start immediately in motion. Fast but readable. Strong parallax, rain mist, glass reflections, drone scan beams, blade light trails. [0s-1s] Macro jacket and blade-hilt wake-up with cyan circuit-like pulse, chromatic aberration, sharp inhale. [1s-2s] Top-down god-view reveal, camera plunges into the kilometer-deep cylindrical shaft. [2s-3s] Whip-orbit 180 degrees as she leans over the abyss, hair and straps catching wind. [3s-4s] Low-angle whip tilt from boots to masked eyes as she commits. [4s-5s] Hero jump, bullet-time 270 degree orbital around her suspended silhouette. [5s-6s] Time snap into high-speed head-first fall with radial motion blur. [6s-8s] Over-shoulder vertical plunge through windows, gantries, antennae, and hologram panels. [8s-9s] Hard right roll between two industrial pylons, sparks scrape past shoulder, frame banks 70 degrees. [9s-10s] Whip-pan back to reveal two armored drones diving after her with magenta plasma trails. [10s-11s] Bullet-time twist as she draws neon tanto, plasma bolts pass inches from mask. [11s-12s] Speed snap strike, blade slices nearest drone, white spark burst, debris fan-out. [12s-13s] Grapple launch, camera follows cable arc to passing gantry. [13s-14s] Wide pull-back as she swings in a 180 degree arc across the vertical void. [14s-15s] Crouched landing on lower gantry, masked face slowly looks up, clean hold.",
+      targetDuration: 15,
+      sceneCount: "1",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "timecoded micro-shot action trailer, cinematic anime realism, vertical scale, bullet-time, whip orbit, radial blur, drone VFX, glass and rain reflections, cyan-magenta neon",
+      seedanceModel: "quality"
+    }
+  },
   {
     label: "Omni Action Chase",
     detail: "15s",
@@ -402,6 +439,7 @@ export function StudioShell() {
   const [draftForm, setDraftForm] = useState<DraftForm>(defaultDraftForm);
   const [draftPreview, setDraftPreview] = useState<StoryboardDraftResult | null>(null);
   const [publishedRun, setPublishedRun] = useState<PublishedRunState | null>(null);
+  const [clipLibraryOpen, setClipLibraryOpen] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [log, setLog] = useState<string[]>([]);
@@ -421,11 +459,26 @@ export function StudioShell() {
   );
   const exportAssets = useMemo(() => videoAssets.filter(isExportAsset), [videoAssets]);
   const clipAssets = useMemo(() => videoAssets.filter((asset) => !isExportAsset(asset)), [videoAssets]);
+  const activeClipAssets = useMemo(() => clipAssets.filter((asset) => !isArchivedAsset(asset)), [clipAssets]);
+  const archivedClipAssets = useMemo(() => clipAssets.filter(isArchivedAsset), [clipAssets]);
   const activeCharacterSheet = useMemo(() => preferredReferenceAssets(project?.assets ?? [])[0] ?? null, [project]);
   const selectedShot = useMemo(
     () => storyboard?.shots.find((shot) => shot.id === selectedShotId) ?? storyboard?.shots[0] ?? null,
     [storyboard, selectedShotId]
   );
+  const shotTakesByShotId = useMemo(
+    () => buildShotTakeMap(storyboard, activeClipAssets),
+    [storyboard, activeClipAssets]
+  );
+  const selectedOutputPaths = useMemo(
+    () => new Set((storyboard?.shots ?? []).map((shot) => shot.outputRelPath).filter(Boolean) as string[]),
+    [storyboard]
+  );
+  const looseClipAssets = useMemo(
+    () => activeClipAssets.filter((asset) => !isCurrentStoryboardTake(asset, storyboard)),
+    [activeClipAssets, storyboard]
+  );
+  const selectedShotTakes = selectedShot ? shotTakesByShotId.get(selectedShot.id) ?? [] : [];
   const selectedShotAsset = useMemo(
     () =>
       selectedShot?.outputRelPath
@@ -698,6 +751,54 @@ export function StudioShell() {
     }
   }
 
+  async function archiveAsset(asset: StudioAsset, archived = true) {
+    if (archived && storyboard?.shots.some((shot) => shot.outputRelPath === asset.relPath)) {
+      pushLog("Select another take before archiving the selected take");
+      return;
+    }
+    setBusy("delete");
+    try {
+      await requestJson<{ success: true }>("/api/assets/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ relPath: asset.relPath, archived })
+      });
+      setPreview((current) => (archived && current?.relPath === asset.relPath ? null : current));
+      pushLog(`${archived ? "Archived" : "Restored"} ${(asset.metadata?.["label"] as string) || asset.name}`);
+      await refreshProject();
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Asset archive failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function archiveUnselectedTakes(shot: StoryboardShot, takes: StudioAsset[]) {
+    const candidates = takes.filter((asset) => asset.relPath !== shot.outputRelPath);
+    if (candidates.length === 0) {
+      pushLog("No unselected takes to archive");
+      return;
+    }
+    setBusy("delete");
+    try {
+      await Promise.all(
+        candidates.map((asset) =>
+          requestJson<{ success: true }>("/api/assets/archive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ relPath: asset.relPath, archived: true })
+          })
+        )
+      );
+      pushLog(`Archived ${candidates.length} unselected take${candidates.length === 1 ? "" : "s"}`);
+      await refreshProject();
+    } catch (error) {
+      pushLog(error instanceof Error ? error.message : "Archive takes failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function draftStoryboard() {
     setBusy("draft");
     try {
@@ -913,6 +1014,20 @@ export function StudioShell() {
       shot.id === selectedShot.id ? { ...shot, ...patch, updatedAt: now } : shot
     );
     setStoryboardAndPersist({ ...storyboard, shots, updatedAt: now });
+  }
+
+  function selectShotTake(shotId: string, asset: StudioAsset) {
+    if (!storyboard) return;
+    const now = new Date().toISOString();
+    const shots = storyboard.shots.map((shot) =>
+      shot.id === shotId
+        ? { ...shot, status: "done" as const, outputRelPath: asset.relPath, error: undefined, updatedAt: now }
+        : shot
+    );
+    setSelectedShotId(shotId);
+    setStoryboardAndPersist({ ...storyboard, shots, updatedAt: now });
+    previewAsset(asset);
+    pushLog(`Selected take: ${(asset.metadata?.["label"] as string) || asset.name}`);
   }
 
   function toggleRef(relPath: string) {
@@ -1168,6 +1283,7 @@ export function StudioShell() {
     !hasRunningShots;
 
   return (
+    <>
     <main className="grid h-screen grid-rows-[52px_minmax(0,1fr)] bg-panel2 text-ink">
       <header className="flex items-center justify-between border-b border-border bg-white px-4 shadow-tool">
         <div className="flex items-center gap-3">
@@ -1219,12 +1335,14 @@ export function StudioShell() {
               onPreview={previewAsset}
               onDelete={removeAsset}
             />
-            <AssetGroup
-              title="Clips"
-              assets={clipAssets}
-              selectedRefs={selectedRefs}
+            <ClipSummary
+              assets={activeClipAssets}
+              archivedCount={archivedClipAssets.length}
+              looseCount={looseClipAssets.length}
+              selectedOutputPaths={selectedOutputPaths}
               onPreview={previewAsset}
-              onDelete={removeAsset}
+              onArchive={(asset) => archiveAsset(asset, true)}
+              onOpenLibrary={() => setClipLibraryOpen(true)}
             />
             <AssetGroup
               title="Exports"
@@ -1252,12 +1370,14 @@ export function StudioShell() {
           <StoryboardLane
             storyboard={storyboard}
             assets={project?.assets ?? []}
+            takesByShotId={shotTakesByShotId}
             selectedShotId={selectedShot?.id ?? null}
             totalDuration={totalDuration}
             previewClipCount={storyboardPreviewClips.length}
             previewMissingCount={storyboardPreviewMissingShots.length}
             hasRunningShots={hasRunningShots}
             allShotsReady={Boolean(allShotsReady)}
+            canGenerateSelected={canGenerateSelected}
             canSaveRun={canSaveRun}
             canPublishRun={canPublishRun}
             canAddGallery={canAddGallery}
@@ -1268,6 +1388,7 @@ export function StudioShell() {
             onSelectShot={setSelectedShotId}
             onPreview={previewAsset}
             onPreviewStoryboard={previewStoryboard}
+            onGenerateSelected={generateSelectedShot}
             onDuplicate={duplicateShot}
             onDelete={deleteStoryboardShot}
             onMove={moveShot}
@@ -1587,6 +1708,15 @@ export function StudioShell() {
                     Strict continuation uses Seedance image-to-video and needs IMGBB_API_KEY for the extracted start frame.
                   </div>
                 ) : null}
+                <TakeStrip
+                  shot={selectedShot}
+                  takes={selectedShotTakes}
+                  selectedRelPath={selectedShot.outputRelPath}
+                  onSelect={(asset) => selectShotTake(selectedShot.id, asset)}
+                  onPreview={previewAsset}
+                  onArchive={(asset) => archiveAsset(asset, true)}
+                  onArchiveUnselected={() => archiveUnselectedTakes(selectedShot, selectedShotTakes)}
+                />
                 <ReferenceStrip
                   references={referenceOptions}
                   onPreview={previewAsset}
@@ -1723,6 +1853,20 @@ export function StudioShell() {
         </aside>
       </div>
     </main>
+    {clipLibraryOpen ? (
+      <ClipLibrary
+        storyboard={storyboard}
+        activeClips={activeClipAssets}
+        archivedClips={archivedClipAssets}
+        selectedOutputPaths={selectedOutputPaths}
+        onClose={() => setClipLibraryOpen(false)}
+        onPreview={previewAsset}
+        onSelectTake={selectShotTake}
+        onArchive={(asset) => archiveAsset(asset, true)}
+        onRestore={(asset) => archiveAsset(asset, false)}
+      />
+    ) : null}
+    </>
   );
 }
 
@@ -1895,15 +2039,86 @@ function AssetGroup({
   );
 }
 
+function ClipSummary({
+  assets,
+  archivedCount,
+  looseCount,
+  selectedOutputPaths,
+  onPreview,
+  onArchive,
+  onOpenLibrary
+}: {
+  assets: StudioAsset[];
+  archivedCount: number;
+  looseCount: number;
+  selectedOutputPaths: Set<string>;
+  onPreview: (asset: StudioAsset) => void;
+  onArchive: (asset: StudioAsset) => void;
+  onOpenLibrary: () => void;
+}) {
+  const recent = assets.slice(0, 5);
+  return (
+    <div className="mb-5">
+      <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold uppercase text-muted">
+        <span>Clips</span>
+        <button onClick={onOpenLibrary} className="rounded bg-panel2 px-2 py-0.5 text-[11px] normal-case text-ink hover:bg-white">
+          Library
+        </button>
+      </div>
+      <button
+        onClick={onOpenLibrary}
+        className="mb-2 grid w-full grid-cols-3 gap-1 rounded border border-border bg-white p-2 text-left text-[11px] text-muted hover:bg-panel"
+      >
+        <span><strong className="text-ink">{assets.length}</strong> active</span>
+        <span><strong className="text-ink">{looseCount}</strong> loose</span>
+        <span><strong className="text-ink">{archivedCount}</strong> archived</span>
+      </button>
+      <div className="grid gap-2">
+        {recent.length === 0 ? (
+          <EmptyLine label="No active clips" />
+        ) : (
+          recent.map((asset) => {
+            const selected = selectedOutputPaths.has(asset.relPath);
+            return (
+              <div key={asset.id} className="grid grid-cols-[64px_minmax(0,1fr)_auto] overflow-hidden rounded border border-border bg-white">
+                <button onClick={() => onPreview(asset)} className="h-12 bg-panel">
+                  <Thumb asset={asset} />
+                </button>
+                <button onClick={() => onPreview(asset)} className="min-w-0 px-2 text-left text-xs">
+                  <div className="truncate font-medium">{(asset.metadata?.["label"] as string) || asset.name}</div>
+                  <div className="truncate text-[11px] text-muted">
+                    {selected ? "selected take" : clipAssetSubtitle(asset)}
+                  </div>
+                </button>
+                <button
+                  onClick={() => onArchive(asset)}
+                  disabled={selected}
+                  title={selected ? "Select another take before archiving" : "Archive clip"}
+                  aria-label="Archive clip"
+                  className="m-2 inline-flex h-8 w-8 items-center justify-center rounded bg-panel2 text-ink hover:bg-panel disabled:cursor-not-allowed disabled:text-muted"
+                >
+                  <Archive size={13} />
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StoryboardLane({
   storyboard,
   assets,
+  takesByShotId,
   selectedShotId,
   totalDuration,
   previewClipCount,
   previewMissingCount,
   hasRunningShots,
   allShotsReady,
+  canGenerateSelected,
   canSaveRun,
   canPublishRun,
   canAddGallery,
@@ -1914,6 +2129,7 @@ function StoryboardLane({
   onSelectShot,
   onPreview,
   onPreviewStoryboard,
+  onGenerateSelected,
   onDuplicate,
   onDelete,
   onMove,
@@ -1925,12 +2141,14 @@ function StoryboardLane({
 }: {
   storyboard: StoryboardProject | null;
   assets: StudioAsset[];
+  takesByShotId: Map<string, StudioAsset[]>;
   selectedShotId: string | null;
   totalDuration: number;
   previewClipCount: number;
   previewMissingCount: number;
   hasRunningShots: boolean;
   allShotsReady: boolean;
+  canGenerateSelected: boolean;
   canSaveRun: boolean;
   canPublishRun: boolean;
   canAddGallery: boolean;
@@ -1941,6 +2159,7 @@ function StoryboardLane({
   onSelectShot: (id: string) => void;
   onPreview: (asset: StudioAsset) => void;
   onPreviewStoryboard: () => void;
+  onGenerateSelected: () => void;
   onDuplicate: (shot: StoryboardShot) => void;
   onDelete: (shot: StoryboardShot) => void;
   onMove: (shot: StoryboardShot, direction: -1 | 1) => void;
@@ -1981,6 +2200,13 @@ function StoryboardLane({
                   ? `${previewMissingCount} storyboard shots are not generated yet`
                   : "Preview generated storyboard clips"
             }
+          />
+          <MiniButton
+            onClick={onGenerateSelected}
+            disabled={!canGenerateSelected}
+            icon={busy === "shot" ? <Loader2 size={14} className="animate-spin" /> : <Video size={14} />}
+            label="Selected"
+            title="Generate selected shot"
           />
           <MiniButton
             onClick={onGenerateAll}
@@ -2029,6 +2255,7 @@ function StoryboardLane({
               shot={shot}
               selected={shot.id === selectedShotId}
               asset={assets.find((asset) => asset.relPath === shot.outputRelPath) ?? null}
+              takes={takesByShotId.get(shot.id) ?? []}
               onSelect={() => onSelectShot(shot.id)}
               onPreview={onPreview}
               onDuplicate={() => onDuplicate(shot)}
@@ -2047,6 +2274,7 @@ function ShotCard({
   shot,
   selected,
   asset,
+  takes,
   onSelect,
   onPreview,
   onDuplicate,
@@ -2057,6 +2285,7 @@ function ShotCard({
   shot: StoryboardShot;
   selected: boolean;
   asset: StudioAsset | null;
+  takes: StudioAsset[];
   onSelect: () => void;
   onPreview: (asset: StudioAsset) => void;
   onDuplicate: () => void;
@@ -2064,6 +2293,9 @@ function ShotCard({
   onMoveLeft: () => void;
   onMoveRight: () => void;
 }) {
+  const selectedTakeIndex = asset ? takes.findIndex((take) => take.relPath === asset.relPath) : -1;
+  const takeLabel =
+    takes.length > 0 ? `Take ${selectedTakeIndex >= 0 ? selectedTakeIndex + 1 : 1}/${takes.length}` : null;
   return (
     <div
       className={`h-[190px] w-[252px] shrink-0 overflow-hidden rounded border bg-white ${
@@ -2087,6 +2319,11 @@ function ShotCard({
         <span className="absolute left-2 top-2 rounded bg-white/90 px-2 py-0.5 text-[11px] font-semibold">
           {shot.order + 1}
         </span>
+        {takeLabel ? (
+          <span className="absolute right-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white">
+            {takeLabel}
+          </span>
+        ) : null}
       </button>
       <div className="grid h-[80px] grid-rows-[auto_auto] gap-2 p-2 text-xs">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
@@ -2097,6 +2334,11 @@ function ShotCard({
         </div>
         <div className="flex min-w-0 items-center justify-between gap-2">
           <ShotStatusBadge status={shot.status} compact />
+          {takes.length > 1 ? (
+            <span className="shrink-0 rounded bg-panel2 px-1.5 py-0.5 text-[10px] text-muted">
+              {takes.length} takes
+            </span>
+          ) : null}
           <div className="grid shrink-0 grid-cols-4 gap-1">
             <button className="card-tool" onClick={onMoveLeft} aria-label="Move shot left">
               <ChevronLeft size={13} />
@@ -2201,6 +2443,93 @@ function DraftPreview({
         </div>
       ) : null}
       <IconButton onClick={onApply} icon={<CheckCircle2 size={15} />} label="Apply to storyboard" />
+    </div>
+  );
+}
+
+function TakeStrip({
+  shot,
+  takes,
+  selectedRelPath,
+  onSelect,
+  onPreview,
+  onArchive,
+  onArchiveUnselected
+}: {
+  shot: StoryboardShot;
+  takes: StudioAsset[];
+  selectedRelPath?: string;
+  onSelect: (asset: StudioAsset) => void;
+  onPreview: (asset: StudioAsset) => void;
+  onArchive: (asset: StudioAsset) => void;
+  onArchiveUnselected: () => void;
+}) {
+  const unselectedCount = takes.filter((asset) => asset.relPath !== selectedRelPath).length;
+  return (
+    <div className="grid gap-2 rounded border border-border bg-panel p-2">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <div className="font-semibold text-ink">Takes</div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted">{takes.length} for shot {shot.order + 1}</span>
+          <button
+            onClick={onArchiveUnselected}
+            disabled={unselectedCount === 0}
+            className="rounded border border-border bg-white px-2 py-1 text-[11px] font-medium hover:bg-panel disabled:cursor-not-allowed disabled:text-muted"
+          >
+            Archive unselected
+          </button>
+        </div>
+      </div>
+      {takes.length === 0 ? (
+        <EmptyLine label="No takes generated yet" />
+      ) : (
+        <div className="scrollbar flex gap-2 overflow-x-auto">
+          {takes.map((asset, index) => {
+            const selected = asset.relPath === selectedRelPath;
+            return (
+              <div
+                key={asset.id}
+                className={`relative h-[86px] w-[116px] shrink-0 overflow-hidden rounded border bg-white ${
+                  selected ? "border-accent" : "border-border"
+                }`}
+              >
+                <button
+                  onClick={() => onSelect(asset)}
+                  className="block h-14 w-full bg-panel"
+                  title="Select this take"
+                >
+                  <Thumb asset={asset} />
+                </button>
+                <button
+                  onClick={() => onPreview(asset)}
+                  className="grid w-full gap-0.5 px-1.5 py-1 text-left text-[10px]"
+                  title="Preview this take"
+                >
+                  <span className="truncate font-semibold">Take {index + 1}</span>
+                  <span className="truncate text-muted">{clipAssetSubtitle(asset)}</span>
+                </button>
+                <span className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  selected ? "bg-accent text-white" : "bg-white/90 text-ink"
+                }`}>
+                  {selected ? "Selected" : "Take"}
+                </span>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onArchive(asset);
+                  }}
+                  disabled={selected}
+                  title={selected ? "Select another take before archiving" : "Archive take"}
+                  aria-label="Archive take"
+                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded bg-white/90 shadow-tool disabled:cursor-not-allowed disabled:text-muted"
+                >
+                  <Archive size={12} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2636,6 +2965,194 @@ function PreviewToolButton({
   );
 }
 
+function ClipLibrary({
+  storyboard,
+  activeClips,
+  archivedClips,
+  selectedOutputPaths,
+  onClose,
+  onPreview,
+  onSelectTake,
+  onArchive,
+  onRestore
+}: {
+  storyboard: StoryboardProject | null;
+  activeClips: StudioAsset[];
+  archivedClips: StudioAsset[];
+  selectedOutputPaths: Set<string>;
+  onClose: () => void;
+  onPreview: (asset: StudioAsset) => void;
+  onSelectTake: (shotId: string, asset: StudioAsset) => void;
+  onArchive: (asset: StudioAsset) => void;
+  onRestore: (asset: StudioAsset) => void;
+}) {
+  const [filter, setFilter] = useState<ClipLibraryFilter>("current");
+  const currentTakeMap = buildShotTakeMap(storyboard, activeClips);
+  const previousClips = activeClips.filter((asset) => !isCurrentStoryboardTake(asset, storyboard));
+  const shots = sortedStoryboardShots(storyboard);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-6">
+      <div className="grid max-h-[82vh] w-full max-w-5xl grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded border border-border bg-white shadow-xl">
+        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <FolderOpen size={16} />
+            Clip Library
+          </div>
+          <button onClick={onClose} className="inline-flex h-8 w-8 items-center justify-center rounded hover:bg-panel" aria-label="Close library">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex items-center gap-2 border-b border-border p-3">
+          {(["current", "previous", "archived"] as ClipLibraryFilter[]).map((item) => (
+            <button
+              key={item}
+              onClick={() => setFilter(item)}
+              className={`h-8 rounded border px-3 text-xs font-medium ${
+                filter === item ? "border-accent bg-[#e8f5f5] text-ink" : "border-border bg-white text-muted hover:bg-panel"
+              }`}
+            >
+              {item === "current" ? "Current storyboard" : item === "previous" ? "Previous / loose" : "Archived"}
+            </button>
+          ))}
+        </div>
+        <div className="scrollbar overflow-auto p-4">
+          {filter === "current" ? (
+            <div className="grid gap-4">
+              {shots.length === 0 ? <EmptyLine label="No storyboard shots" /> : null}
+              {shots.map((shot) => (
+                <ClipLibraryShotGroup
+                  key={shot.id}
+                  shot={shot}
+                  clips={currentTakeMap.get(shot.id) ?? []}
+                  selectedOutputPaths={selectedOutputPaths}
+                  onPreview={onPreview}
+                  onSelect={(asset) => onSelectTake(shot.id, asset)}
+                  onArchive={onArchive}
+                />
+              ))}
+            </div>
+          ) : filter === "previous" ? (
+            <ClipLibraryGrid
+              clips={previousClips}
+              emptyLabel="No previous or loose clips"
+              selectedOutputPaths={selectedOutputPaths}
+              onPreview={onPreview}
+              onArchive={onArchive}
+            />
+          ) : (
+            <ClipLibraryGrid
+              clips={archivedClips}
+              emptyLabel="No archived clips"
+              selectedOutputPaths={selectedOutputPaths}
+              onPreview={onPreview}
+              onRestore={onRestore}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClipLibraryShotGroup({
+  shot,
+  clips,
+  selectedOutputPaths,
+  onPreview,
+  onSelect,
+  onArchive
+}: {
+  shot: StoryboardShot;
+  clips: StudioAsset[];
+  selectedOutputPaths: Set<string>;
+  onPreview: (asset: StudioAsset) => void;
+  onSelect: (asset: StudioAsset) => void;
+  onArchive: (asset: StudioAsset) => void;
+}) {
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center justify-between text-xs">
+        <div className="font-semibold text-ink">
+          {shot.order + 1}. {shot.title}
+        </div>
+        <div className="text-muted">{clips.length} takes</div>
+      </div>
+      <ClipLibraryGrid
+        clips={clips}
+        emptyLabel="No takes for this shot"
+        selectedOutputPaths={selectedOutputPaths}
+        onPreview={onPreview}
+        onSelect={onSelect}
+        onArchive={onArchive}
+      />
+    </section>
+  );
+}
+
+function ClipLibraryGrid({
+  clips,
+  emptyLabel,
+  selectedOutputPaths,
+  onPreview,
+  onSelect,
+  onArchive,
+  onRestore
+}: {
+  clips: StudioAsset[];
+  emptyLabel: string;
+  selectedOutputPaths: Set<string>;
+  onPreview: (asset: StudioAsset) => void;
+  onSelect?: (asset: StudioAsset) => void;
+  onArchive?: (asset: StudioAsset) => void;
+  onRestore?: (asset: StudioAsset) => void;
+}) {
+  if (clips.length === 0) return <EmptyLine label={emptyLabel} />;
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {clips.map((asset) => {
+        const selected = selectedOutputPaths.has(asset.relPath);
+        return (
+          <div key={asset.id} className={`overflow-hidden rounded border bg-white ${selected ? "border-accent" : "border-border"}`}>
+            <button onClick={() => onPreview(asset)} className="block h-28 w-full bg-panel">
+              <Thumb asset={asset} />
+            </button>
+            <div className="grid gap-2 p-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => onPreview(asset)} className="min-w-0 truncate text-left font-semibold">
+                  {(asset.metadata?.["label"] as string) || asset.name}
+                </button>
+                {selected ? <span className="rounded bg-[#e8f5f5] px-2 py-0.5 text-[10px] text-accent">Selected</span> : null}
+              </div>
+              <div className="truncate text-[11px] text-muted">{clipAssetSubtitle(asset)}</div>
+              <div className="flex gap-2">
+                {onSelect ? (
+                  <button onClick={() => onSelect(asset)} className="h-7 rounded bg-ink px-2 text-[11px] font-medium text-white">
+                    Select take
+                  </button>
+                ) : null}
+                {onArchive ? (
+                  <button
+                    onClick={() => onArchive(asset)}
+                    disabled={selected}
+                    className="h-7 rounded border border-border px-2 text-[11px] font-medium hover:bg-panel disabled:cursor-not-allowed disabled:text-muted"
+                  >
+                    Archive
+                  </button>
+                ) : null}
+                {onRestore ? (
+                  <button onClick={() => onRestore(asset)} className="h-7 rounded border border-border px-2 text-[11px] font-medium hover:bg-panel">
+                    Restore
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Thumb({ asset }: { asset: StudioAsset }) {
   if (asset.kind === "video") {
     return <video src={asset.url} muted className="h-full w-full object-cover" />;
@@ -2801,6 +3318,64 @@ function isRunningStatus(status: StoryboardShot["status"]): boolean {
 
 function isExportAsset(asset: StudioAsset): boolean {
   return asset.metadata?.["source"] === "storyboard-export" || asset.relPath.includes("/exports/");
+}
+
+function isArchivedAsset(asset: StudioAsset): boolean {
+  return typeof asset.metadata?.["archivedAt"] === "string";
+}
+
+function isStoryboardShotAsset(asset: StudioAsset): boolean {
+  return asset.kind === "video" && asset.metadata?.["source"] === "storyboard-shot";
+}
+
+function shotIdForAsset(asset: StudioAsset): string | null {
+  const shotId = asset.metadata?.["shotId"];
+  return typeof shotId === "string" ? shotId : null;
+}
+
+function buildShotTakeMap(
+  storyboard: StoryboardProject | null,
+  assets: StudioAsset[]
+): Map<string, StudioAsset[]> {
+  const shots = sortedStoryboardShots(storyboard);
+  const shotIds = new Set(shots.map((shot) => shot.id));
+  const selectedPathToShotId = new Map(
+    shots.flatMap((shot) => (shot.outputRelPath ? [[shot.outputRelPath, shot.id] as const] : []))
+  );
+  const map = new Map<string, StudioAsset[]>();
+  for (const asset of assets) {
+    if (!isStoryboardShotAsset(asset)) continue;
+    const metadataShotId = shotIdForAsset(asset);
+    const shotId = metadataShotId && shotIds.has(metadataShotId) ? metadataShotId : selectedPathToShotId.get(asset.relPath);
+    if (!shotId) continue;
+    const items = map.get(shotId) ?? [];
+    items.push(asset);
+    map.set(shotId, items);
+  }
+  for (const [shotId, items] of map) {
+    map.set(
+      shotId,
+      [...items].sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+    );
+  }
+  return map;
+}
+
+function isCurrentStoryboardTake(asset: StudioAsset, storyboard: StoryboardProject | null): boolean {
+  if (!isStoryboardShotAsset(asset)) return false;
+  const shots = storyboard?.shots ?? [];
+  const metadataShotId = shotIdForAsset(asset);
+  return shots.some((shot) => shot.id === metadataShotId || shot.outputRelPath === asset.relPath);
+}
+
+function clipAssetSubtitle(asset: StudioAsset): string {
+  const seedanceModel = asset.metadata?.["seedanceModel"];
+  const durationValue = asset.metadata?.["duration"];
+  const inputModeValue = asset.metadata?.["inputMode"];
+  const model = typeof seedanceModel === "string" ? seedanceModel : "video";
+  const duration = typeof durationValue === "number" ? `${durationValue}s` : null;
+  const inputMode = typeof inputModeValue === "string" ? inputModeValue : null;
+  return [model, duration, inputMode].filter(Boolean).join(" / ");
 }
 
 function buildStoryboardPreviewClips(

@@ -348,7 +348,8 @@ async function runShotGeneration(projectId: string, shotId: string): Promise<voi
       }
     }
     const prompt = buildContinuityPrompt(shot.prompt, continuityInput);
-    const relPath = `assets/videos/storyboard/${shot.order + 1}-${shot.id.slice(0, 8)}-${slugify(prompt).slice(0, 28)}.mp4`;
+    const takeId = String(Date.now());
+    const relPath = `assets/videos/storyboard/${shot.order + 1}-${shot.id.slice(0, 8)}-${takeId}-${slugify(prompt).slice(0, 20)}.mp4`;
     const args = [
       "generate",
       "video",
@@ -385,6 +386,7 @@ async function runShotGeneration(projectId: string, shotId: string): Promise<voi
       seedanceModel: shot.seedanceModel,
       generateAudio: shot.generateAudio,
       source: "storyboard-shot",
+      takeId,
       inputMode: continuityInput.inputMode,
       characterReferences: shot.references,
       references: continuityInput.references,

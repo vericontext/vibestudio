@@ -139,6 +139,25 @@ export async function writeAssetMetadata(
   await writeFile(metaPath, JSON.stringify({ ...metadata, relPath }, null, 2), "utf-8");
 }
 
+export async function patchAssetMetadata(
+  projectId: string,
+  relPath: string,
+  patch: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const abs = projectRelativePath(projectId, relPath);
+  const assetsDir = projectRelativePath(projectId, "assets");
+  if (!abs.startsWith(assetsDir + path.sep)) {
+    throw new Error("Only project assets can be updated");
+  }
+  if (!existsSync(abs)) {
+    throw new Error("Asset file is missing");
+  }
+  const existing = (await readAssetMetadata(abs)) ?? {};
+  const next = { ...existing, ...patch };
+  await writeAssetMetadata(projectId, relPath, next);
+  return { ...next, relPath };
+}
+
 export async function deleteAsset(projectId: string, relPath: string): Promise<void> {
   const abs = projectRelativePath(projectId, relPath);
   const assetsDir = projectRelativePath(projectId, "assets");
