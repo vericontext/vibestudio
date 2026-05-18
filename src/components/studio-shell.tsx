@@ -68,6 +68,7 @@ type DraftForm = {
   pacing: StoryboardPacing;
   aspectRatio: VideoRatio;
   visualStyle: string;
+  seedanceModel: SeedanceModel;
 };
 
 type Busy =
@@ -161,7 +162,8 @@ const defaultDraftForm: DraftForm = {
   sceneCount: "auto",
   pacing: "auto",
   aspectRatio: "16:9",
-  visualStyle: "grounded cinematic animation, realistic fabric motion, soft neon city light"
+  visualStyle: "grounded cinematic animation, realistic fabric motion, soft neon city light",
+  seedanceModel: "fast"
 };
 
 const characterPresets: CharacterPreset[] = [
@@ -189,10 +191,46 @@ const characterPresets: CharacterPreset[] = [
       quality: "medium",
       size: "1536x1024"
     }
+  },
+  {
+    label: "Rin",
+    detail: "Blade",
+    form: {
+      characterName: "Rin",
+      character:
+        "A fictional Korean female cyberpunk blade runner with a short white tactical bob, black face mask, intense eyes, athletic parkour build, confident aggressive expression",
+      role: "rain rooftop blade runner, drone evasion specialist, agile close-quarters courier, precise and fearless",
+      outfit:
+        "black iridescent rain jacket with red lining, cropped tactical harness, dark tapered cargo pants, flexible shin guards, high-grip boots, red utility sash",
+      gear:
+        "compact neon tanto blade, wrist scanner, small magnetic blade sheath, rainproof utility straps, close-up panels for mask, blade, boots, gloves, and sash",
+      movementStyle:
+        "wall-runs, sign vaults, low slides, blade draws, drone dodges, airborne slash poses, readable parkour body mechanics",
+      palette: "black, wet charcoal, deep red, pale white hair, cyan scanner light, small neon magenta accents",
+      style:
+        "stylized cinematic animation, fictional game character sheet, rain action reference, realistic wet fabric and gear, clean production layout",
+      quality: "high",
+      size: "1536x1024"
+    }
   }
 ];
 
 const storyboardPresets: StoryboardPreset[] = [
+  {
+    label: "Blade Runner Hero",
+    detail: "2x15s",
+    form: {
+      brief:
+        "A 30 second two-shot hero action sequence for a masked cyberpunk blade runner. Shot 1 is a rain-soaked rooftop chase: the runner is already sprinting, wall-runs across wet concrete, dodges a scanning drone, draws a compact neon tanto blade, and vaults through a broken holographic sign. Shot 2 continues from that momentum: the runner lands into a low slide under rooftop pipes, the camera whips into a close eye-and-blade beat, then she launches into a final airborne slash through neon rain.",
+      targetDuration: 30,
+      sceneCount: "2",
+      pacing: "fast",
+      aspectRatio: "16:9",
+      visualStyle:
+        "Seedance 2.0 quality, cinematic anime realism, wet neon rooftop district, aggressive handheld tracking, wide 18-24mm lens, strong parallax, foreground pipes and signs, rain spray, blade light trails, fast but readable body mechanics, no calm intro",
+      seedanceModel: "quality"
+    }
+  },
   {
     label: "Neon Chase",
     detail: "Fast",
@@ -204,7 +242,8 @@ const storyboardPresets: StoryboardPreset[] = [
       pacing: "fast",
       aspectRatio: "16:9",
       visualStyle:
-        "grounded cinematic animation, handheld tracking, foreground occlusion, wet neon reflections, strong parallax, visible body mechanics"
+        "grounded cinematic animation, handheld tracking, foreground occlusion, wet neon reflections, strong parallax, visible body mechanics",
+      seedanceModel: "fast"
     }
   },
   {
@@ -218,7 +257,8 @@ const storyboardPresets: StoryboardPreset[] = [
       pacing: "fast",
       aspectRatio: "16:9",
       visualStyle:
-        "cinematic rooftop action, dynamic tracking camera, readable silhouette, practical fabric motion, dusk neon skyline, no impossible physics"
+        "cinematic rooftop action, dynamic tracking camera, readable silhouette, practical fabric motion, dusk neon skyline, no impossible physics",
+      seedanceModel: "fast"
     }
   },
   {
@@ -232,7 +272,8 @@ const storyboardPresets: StoryboardPreset[] = [
       pacing: "balanced",
       aspectRatio: "16:9",
       visualStyle:
-        "grounded cinematic animation, motivated camera moves, practical city detail, suspenseful but readable action, consistent lighting and geography"
+        "grounded cinematic animation, motivated camera moves, practical city detail, suspenseful but readable action, consistent lighting and geography",
+      seedanceModel: "fast"
     }
   },
   {
@@ -246,7 +287,8 @@ const storyboardPresets: StoryboardPreset[] = [
       pacing: "slow",
       aspectRatio: "16:9",
       visualStyle:
-        "soft neon city light, shallow depth of field, subtle fabric movement, restrained camera push, quiet sound design without unrelated footsteps"
+        "soft neon city light, shallow depth of field, subtle fabric movement, restrained camera push, quiet sound design without unrelated footsteps",
+      seedanceModel: "fast"
     }
   }
 ];
@@ -266,7 +308,8 @@ const promptRecipes: PromptRecipe[] = [
       pacing: "fast",
       aspectRatio: "16:9",
       visualStyle:
-        "Seedance 2.0 Omni Reference, cinematic anime realism, high readability, tracking camera, wet neon reflections, foreground occlusion, no calm intro, start directly in action"
+        "Seedance 2.0 Omni Reference, cinematic anime realism, high readability, tracking camera, wet neon reflections, foreground occlusion, no calm intro, start directly in action",
+      seedanceModel: "fast"
     }
   },
   {
@@ -283,7 +326,8 @@ const promptRecipes: PromptRecipe[] = [
       pacing: "fast",
       aspectRatio: "16:9",
       visualStyle:
-        "cinematic live-action anime realism, strong silhouettes, harsh light shafts, temple smoke, dust displacement, golden-orange energy accents, fast but readable choreography, no extra characters"
+        "cinematic live-action anime realism, strong silhouettes, harsh light shafts, temple smoke, dust displacement, golden-orange energy accents, fast but readable choreography, no extra characters",
+      seedanceModel: "fast"
     }
   },
   {
@@ -300,7 +344,8 @@ const promptRecipes: PromptRecipe[] = [
       pacing: "fast",
       aspectRatio: "16:9",
       visualStyle:
-        "modern painterly anime illustration, editorial sports fashion art, soft digital oil painting, visible brush strokes, clean cinematic lighting, dynamic tilted framing, foreground net occlusion"
+        "modern painterly anime illustration, editorial sports fashion art, soft digital oil painting, visible brush strokes, clean cinematic lighting, dynamic tilted framing, foreground net occlusion",
+      seedanceModel: "fast"
     }
   }
 ];
@@ -720,6 +765,7 @@ export function StudioShell() {
       ...shot,
       id: newId(),
       order: index,
+      seedanceModel: draftForm.seedanceModel,
       status: "draft" as const,
       outputRelPath: undefined,
       error: undefined,
@@ -984,6 +1030,16 @@ export function StudioShell() {
   async function generateAllShots() {
     if (!canGenerateAll) {
       pushLog("Complete references and upload keys before queueing storyboard generation");
+      return;
+    }
+    const qualityCount = storyboard?.shots.filter((shot) => shot.seedanceModel === "quality").length ?? 0;
+    if (
+      qualityCount > 0 &&
+      !window.confirm(
+        `This queues ${qualityCount} Seedance quality shot${qualityCount === 1 ? "" : "s"}. For cost control, generating selected shots one at a time is recommended. Continue?`
+      )
+    ) {
+      pushLog("Cancelled quality storyboard queue");
       return;
     }
     const saved = await saveStoryboardNow();
@@ -1427,6 +1483,16 @@ export function StudioShell() {
                     options={["16:9", "9:16", "1:1"]}
                   />
                 </label>
+                <label className="grid gap-1 text-[11px] font-semibold text-muted">
+                  Model
+                  <Select
+                    value={draftForm.seedanceModel}
+                    onChange={(value) =>
+                      setDraftForm((current) => ({ ...current, seedanceModel: value as SeedanceModel }))
+                    }
+                    options={["fast", "quality"]}
+                  />
+                </label>
               </div>
               <div
                 className={`rounded border p-2 text-xs ${
@@ -1435,6 +1501,11 @@ export function StudioShell() {
               >
                 {draftSceneHint}
               </div>
+              {draftForm.seedanceModel === "quality" ? (
+                <div className="rounded border border-warn bg-[#fff7ed] p-2 text-xs text-warn">
+                  Quality mode can be slow and expensive. Generate selected shots one at a time before queueing all.
+                </div>
+              ) : null}
               <div className="rounded border border-border bg-panel p-2 text-xs text-muted">
                 {activeCharacterSheet
                   ? `@Image1 will use ${String(activeCharacterSheet.metadata?.["label"] ?? activeCharacterSheet.name)}`

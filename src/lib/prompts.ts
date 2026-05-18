@@ -48,8 +48,12 @@ export function buildStoryboardDraftPrompt(input: {
   visualStyle?: string;
   hasCharacterSheet: boolean;
 }): string {
+  const averageShotDuration = input.targetDuration / Math.max(1, input.sceneCount);
+  const sustainedActionPlan = input.sceneCount <= 2 && averageShotDuration >= 12;
   const pacingNote =
-    input.pacing === "slow"
+    sustainedActionPlan
+      ? "Pacing: sustained hero action. Each shot should feel like one continuous action set-piece with fast internal motion, not a calm setup or a montage of unrelated cuts."
+      : input.pacing === "slow"
       ? "Pacing: slow cinematic. Prefer fewer, more sustained shots and restrained camera motion."
       : input.pacing === "fast"
         ? "Pacing: fast cuts. Prefer shorter shots, clearer action beats, and direct transitions."
@@ -83,8 +87,12 @@ export function buildStoryboardDraftPrompt(input: {
       "Maintain character, outfit, palette, facial identity, scene geography, lighting direction, weather, props, and screen direction across all shots.",
       "Keep motion physically plausible between cuts. Avoid impossible jumps in pose, location, lighting, or held objects.",
       "Prefer dynamic but readable cinematic motion: motivated tracking, push-ins, whip-pan transitions, parallax, foreground occlusion, and clear body mechanics.",
-      "Use exactly one main physical action per shot. Split complex action into more shots instead of packing slide, sprint, leap, landing, and lookback into one clip.",
-      "For action presets, prefer 4-7 second shots over 15 second multi-action clips.",
+      sustainedActionPlan
+        ? "Use one continuous action phrase per shot. A 12-15 second hero shot may contain 3-4 connected action beats when they share the same movement direction, camera logic, location, and physical momentum."
+        : "Use exactly one main physical action per shot. Split complex action into more shots instead of packing slide, sprint, leap, landing, and lookback into one clip.",
+      sustainedActionPlan
+        ? "For this low-scene-count plan, prefer 14-15 second sustained quality shots with clear opening and ending frame intent."
+        : "For action presets, prefer 4-7 second shots over 15 second multi-action clips.",
       "Avoid requesting readable text in the video. Avoid unrelated audio such as footsteps, engines, impacts, or crowd noise unless visible in that shot.",
       "Return a qualityChecks array with short checks for duration sum, continuity, reference usage, and Seedance feasibility.",
       `Video brief: ${input.brief}`
