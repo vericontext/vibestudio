@@ -32,6 +32,7 @@ This is an early OSS studio. The core workflow is usable, but provider behavior,
 - OpenAI API key for character sheets and AI storyboard drafting
 - fal.ai API key for Seedance 2.0 video generation
 - ImgBB API key for strict Seedance image-to-video continuation from local extracted frames
+- Cloudflare R2 bucket and S3 API credentials if you want to publish runs to a public gallery
 
 ## Quick Start
 
@@ -53,6 +54,46 @@ Then:
 3. Choose or edit a Storyboard Draft preset, then draft a storyboard.
 4. Apply the draft, review each shot prompt, and generate clips.
 5. Preview clips or export the completed storyboard.
+
+## Publishing and Gallery
+
+VibeStudio separates **asset hosting** from the **public gallery**:
+
+- `Export` stitches the selected storyboard takes into one local video.
+- `Publish` uploads the exported video, thumbnail, run manifest, and reference assets to Cloudflare R2.
+- `Gallery` writes a curated static entry under `examples/` using the published R2 URLs.
+- `git commit && git push` deploys the updated `examples/` data to GitHub Pages through the included workflow.
+
+The current public gallery at https://vericontext.github.io/vibestudio/ is a static GitHub Pages site. It does not read R2 directly yet. R2 stores the heavy media files, while GitHub Pages serves lightweight JSON entries that point to those R2 URLs.
+
+Current manual publish flow:
+
+```text
+Generate clips -> Export -> Publish to R2 -> Add to Gallery -> commit & push -> GitHub Pages deploy
+```
+
+This is intentionally conservative for the early OSS phase: every public example is reviewed and versioned in git, while large videos stay out of the repository. A future direction is an R2-backed live gallery index so `Publish` can update the public gallery without a manual commit.
+
+### Cloudflare R2 Setup
+
+Create your own R2 bucket and credentials. Other users should publish to their own bucket, not a shared project bucket.
+
+1. Create an R2 bucket, for example `vibestudio-runs`.
+2. Create an R2 access key with write access to that bucket.
+3. Enable a public development URL or attach a custom domain for public reads.
+4. Copy `.env.example` to `.env.local` and fill the R2 values:
+
+```bash
+R2_ACCOUNT_ID=""
+R2_ACCESS_KEY_ID=""
+R2_SECRET_ACCESS_KEY=""
+R2_BUCKET="vibestudio-runs"
+R2_REGION="auto"
+R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+R2_PUBLIC_BASE_URL="https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev"
+```
+
+`R2_ENDPOINT` is the account-level S3 API endpoint, without the bucket path. `R2_PUBLIC_BASE_URL` is the public read URL used in gallery entries.
 
 ## VibeFrame CLI
 
