@@ -4,6 +4,9 @@ Local-first OSS video studio for building AI video sequences with character shee
 
 https://github.com/user-attachments/assets/3a9b5a72-0bc9-45b9-9739-ad80da097001
 
+Prompt library and gallery:
+https://vericontext.github.io/vibestudio/
+
 ## What It Does
 
 VibeStudio is a browser-based studio for an asset-first AI video workflow:
