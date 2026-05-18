@@ -4,9 +4,12 @@
   --muted: #66758a;
   --line: #d8e0e8;
   --panel: #f4f7fa;
+  --paper: #fbfcfd;
   --white: #ffffff;
   --accent: #0f8f95;
   --accent-soft: #e5f5f5;
+  --prompt-line: #e3e8ef;
+  --prompt-mark: #edf7f7;
 }
 
 * {
@@ -215,7 +218,7 @@ h3 {
 .detail-title-row,
 .prompt-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
@@ -249,25 +252,59 @@ h3 {
 .copy-button {
   cursor: pointer;
   padding: 7px 10px;
+  white-space: nowrap;
 }
 
 .copy-button:hover {
   background: var(--panel);
 }
 
+.prompt-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
 .prompt-code {
-  max-height: 360px;
+  position: relative;
+  max-height: none;
   overflow: auto;
   border-radius: 6px;
-  background: #111820;
-  color: #e8edf2;
+  border: 1px solid var(--prompt-line);
+  border-left: 4px solid var(--accent);
+  background:
+    linear-gradient(90deg, var(--prompt-mark), transparent 34px),
+    var(--paper);
+  color: #26313d;
   font-family:
-    "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
-    monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  padding: 14px;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  padding: 16px 18px 16px 22px;
   white-space: pre-wrap;
+}
+
+.prompt-code.compact {
+  max-height: 220px;
+  overflow: hidden;
+}
+
+.prompt-code.compact:not(.expanded)::after {
+  position: sticky;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  height: 48px;
+  margin: 0 -18px -16px -22px;
+  background: linear-gradient(rgba(251, 252, 253, 0), var(--paper));
+  content: "";
+}
+
+.prompt-code.expanded {
+  max-height: 70vh;
+  overflow: auto;
 }
 
 .shot-card {
@@ -296,5 +333,9 @@ h3 {
 
   .reference-card {
     grid-template-columns: 1fr;
+  }
+
+  .prompt-title-row {
+    flex-direction: column;
   }
 }

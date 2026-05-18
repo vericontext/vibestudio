@@ -85,6 +85,14 @@ function renderDetail(run) {
       }, 1200);
     });
   });
+  detail.querySelectorAll("[data-expand]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const scope = button.closest("[data-copy-scope]");
+      const body = scope.querySelector(".prompt-code");
+      const expanded = body.classList.toggle("expanded");
+      button.textContent = expanded ? "Collapse" : "Expand";
+    });
+  });
 }
 
 function referenceHtml(character) {
@@ -115,9 +123,12 @@ function shotHtml(shot, index) {
           <h3>${index + 1}. ${escapeHtml(shot.title)}</h3>
           <p class="shot-meta">${formatDuration(shot.duration)} · ${escapeHtml(shot.generationMode)} · ${escapeHtml(shot.seedanceModel)}</p>
         </div>
-        <button class="copy-button" type="button" data-copy>Copy</button>
+        <span class="prompt-actions">
+          <button class="copy-button" type="button" data-expand>Expand</button>
+          <button class="copy-button" type="button" data-copy>Copy</button>
+        </span>
       </div>
-      <pre class="prompt-code" data-copy-text>${escapeHtml(shot.finalPrompt || shot.prompt)}</pre>
+      <pre class="prompt-code compact" data-copy-text>${escapeHtml(shot.finalPrompt || shot.prompt)}</pre>
     </article>
   `;
 }
@@ -127,9 +138,12 @@ function promptBlockHtml(label, text) {
     <article class="prompt-card" data-copy-scope>
       <div class="prompt-title-row">
         <h2>${escapeHtml(label)}</h2>
-        <button class="copy-button" type="button" data-copy>Copy</button>
+        <span class="prompt-actions">
+          <button class="copy-button" type="button" data-expand>Expand</button>
+          <button class="copy-button" type="button" data-copy>Copy</button>
+        </span>
       </div>
-      <pre class="prompt-code" data-copy-text>${escapeHtml(text)}</pre>
+      <pre class="prompt-code compact" data-copy-text>${escapeHtml(text)}</pre>
     </article>
   `;
 }
