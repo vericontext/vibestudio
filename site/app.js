@@ -52,6 +52,7 @@ async function selectRun(id) {
 }
 
 function renderDetail(run) {
+  const copyBlocks = normalizedCopyBlocks(run);
   detail.innerHTML = `
     <div class="detail-layout">
       <video class="hero-video" src="${attr(run.urls.videoUrl)}" poster="${attr(run.urls.thumbnailUrl)}" controls playsinline></video>
@@ -66,11 +67,9 @@ function renderDetail(run) {
         <div class="tag-list">${tagHtml(run.tags ?? [])}</div>
       </section>
       ${referenceHtml(run.character)}
-      <section class="prompt-list">
-        ${(run.copyBlocks ?? []).map((block) => promptBlockHtml(block.label, block.text)).join("")}
-      </section>
+      ${copyBundleHtml(copyBlocks)}
       <section class="shot-list">
-        <div class="section-head"><h2>Shot Prompts</h2><span class="muted">Copy individual beats</span></div>
+        <div class="section-head"><h2>Individual Shot Prompts</h2><span class="muted">Provider prompts are shown when continuity was added</span></div>
         ${(run.shots ?? []).map((shot, index) => shotHtml(shot, index)).join("")}
       </section>
     </div>
@@ -95,6 +94,35 @@ function renderDetail(run) {
   });
 }
 
+function normalizedCopyBlocks(run) {
+  const shots = Array.isArray(run.shots) ? run.shots : [];
+  const hasProviderChanges = shots.some((shot) => shot.finalPrompt && shot.prompt && shot.finalPrompt !== shot.prompt);
+  return (run.copyBlocks ?? []).flatMap((block) => {
+    if (block.label === "Storyboard shot prompts") {
+      return [{ ...block, label: "All storyboard prompts" }];
+    }
+    if (block.label === "Final provider prompts") {
+      return hasProviderChanges ? [{ ...block, label: "All final provider prompts" }] : [];
+    }
+    return [block];
+  });
+}
+
+function copyBundleHtml(blocks) {
+  if (!blocks.length) return "";
+  return `
+    <section class="prompt-list">
+      <div class="section-head">
+        <div>
+          <h2>Copy Bundles</h2>
+          <p class="muted">Bulk prompts for reuse. Individual shot prompts are below.</p>
+        </div>
+      </div>
+      ${blocks.map((block) => promptBlockHtml(block.label, block.text)).join("")}
+    </section>
+  `;
+}
+
 function referenceHtml(character) {
   if (!character?.imageUrl) return "";
   const fields = character.fields ?? {};
@@ -116,6 +144,9 @@ function referenceHtml(character) {
 }
 
 function shotHtml(shot, index) {
+  const hasProviderChange = Boolean(shot.finalPrompt && shot.prompt && shot.finalPrompt !== shot.prompt);
+  const promptText = hasProviderChange ? shot.finalPrompt : shot.prompt;
+  const promptKind = hasProviderChange ? "provider + continuity" : "storyboard";
   return `
     <article class="shot-card" data-copy-scope>
       <div class="prompt-title-row">
@@ -124,11 +155,12 @@ function shotHtml(shot, index) {
           <p class="shot-meta">${formatDuration(shot.duration)} · ${escapeHtml(shot.generationMode)} · ${escapeHtml(shot.seedanceModel)}</p>
         </div>
         <span class="prompt-actions">
+          <span class="prompt-badge">${escapeHtml(promptKind)}</span>
           <button class="copy-button" type="button" data-expand>Expand</button>
           <button class="copy-button" type="button" data-copy>Copy</button>
         </span>
       </div>
-      <pre class="prompt-code compact" data-copy-text>${escapeHtml(shot.finalPrompt || shot.prompt)}</pre>
+      <pre class="prompt-code compact" data-copy-text>${escapeHtml(promptText)}</pre>
     </article>
   `;
 }

@@ -160,11 +160,16 @@ function copyBlocks(characterMetadata: Record<string, unknown>, shots: Array<Rec
   const shotPrompts = shots
     .map((shot, index) => `Shot ${index + 1} - ${stringField(shot, "title")}\n${stringField(shot, "prompt")}`)
     .join("\n\n");
-  if (shotPrompts.trim()) blocks.push({ label: "Storyboard shot prompts", text: shotPrompts });
+  if (shotPrompts.trim()) blocks.push({ label: "All storyboard prompts", text: shotPrompts });
+  const hasProviderChanges = shots.some((shot) => {
+    const prompt = stringField(shot, "prompt");
+    const finalPrompt = stringField(shot, "finalPrompt");
+    return finalPrompt && finalPrompt !== prompt;
+  });
   const finalPrompts = shots
     .map((shot, index) => `Shot ${index + 1} - ${stringField(shot, "title")}\n${stringField(shot, "finalPrompt")}`)
     .join("\n\n");
-  if (finalPrompts.trim()) blocks.push({ label: "Final provider prompts", text: finalPrompts });
+  if (hasProviderChanges && finalPrompts.trim()) blocks.push({ label: "All final provider prompts", text: finalPrompts });
   return blocks;
 }
 
